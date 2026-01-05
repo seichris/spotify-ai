@@ -90,3 +90,42 @@ export async function searchSpotify(query: string, type: string = 'track', limit
     });
     return fetchSpotify(`/search?${params.toString()}`);
 }
+
+export async function createPlaylist(userId: string, name: string, description: string, isPublic = false) {
+    return fetchSpotify(`/users/${userId}/playlists`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            name,
+            description,
+            public: isPublic,
+        }),
+    });
+}
+
+export async function addTracksToPlaylist(playlistId: string, uris: string[]) {
+    return fetchSpotify(`/playlists/${playlistId}/tracks`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ uris }),
+    });
+}
+
+export async function replacePlaylistTracks(playlistId: string, uris: string[]) {
+    return fetchSpotify(`/playlists/${playlistId}/tracks`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ uris }),
+    });
+}
+
+export async function getArtistTopTracks(artistId: string, market: string) {
+    const params = new URLSearchParams({ market });
+    return fetchSpotify(`/artists/${artistId}/top-tracks?${params.toString()}`);
+}

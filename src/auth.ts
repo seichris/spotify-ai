@@ -13,7 +13,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Spotify({
       clientId: process.env.SPOTIFY_CLIENT_ID,
       clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-      authorization: "https://accounts.spotify.com/authorize?scope=user-read-email+user-read-private+user-library-read+streaming+user-read-playback-state+user-modify-playback-state",
+      authorization:
+        "https://accounts.spotify.com/authorize?scope=user-read-email+user-read-private+user-library-read+playlist-modify-private+streaming+user-read-playback-state+user-modify-playback-state",
     }),
   ],
   callbacks: {

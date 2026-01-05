@@ -1,24 +1,46 @@
 "use client";
 
 import { useSpotifyLibrary } from "@/hooks/useSpotifyLibrary";
+import { useVibePlaylists } from "@/hooks/useVibePlaylists";
 import { usePlayer } from "@/components/PlayerProvider";
 import { Button } from "@/components/ui/Button";
+import SongNetwork from "@/components/SongNetwork";
 import { Loader2, Play, SkipBack, Pause, SkipForward, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
+import { SpotifyTrack } from "@/lib/spotify";
 import { signOutAction, getGeminiSuggestionsAction } from "@/app/actions";
 
+type GeminiCacheEntry = {
+    text?: string;
+    suggestions?: SpotifyTrack[];
+};
+
 export default function Dashboard() {
-    const { songs, isLoading, isLoadingMore, hasMore, progress, fetchLibrary, loadMore } = useSpotifyLibrary();
+    const { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll } = useSpotifyLibrary();
     const { isActive, isPaused, playTrack, togglePlay, nextTrack, previousTrack } = usePlayer();
     const [selectedSong, setSelectedSong] = useState<EnrichedTrack | null>(null);
-    const [viewMode, setViewMode] = useState<'recommends' | 'sort'>('recommends');
-    const observerTarget = useRef(null);
+    const [viewMode, setViewMode] = useState<"recommends" | "sort" | "network">("recommends");
+    const observerTarget = useRef<HTMLDivElement | null>(null);
+    const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
+    const [networkSeed, setNetworkSeed] = useState(0);
 
-    const [geminiSuggestions, setGeminiSuggestions] = useState<any[]>([]);
-    const [geminiText, setGeminiText] = useState<string>("");
+    const {
+        isBuilding,
+        isBuildingLibrary,
+        steps,
+        results,
+        libraryResult,
+        error,
+        buildVibePlaylists,
+        buildLibraryPlaylist,
+        resetState,
+    } = useVibePlaylists();
+
+    const isFullLibraryLoaded = total > 0 && songs.length >= total && !hasMore;
+
     const [isGeminiLoading, setIsGeminiLoading] = useState(false);
-    const [cachedSuggestionsMap, setCachedSuggestionsMap] = useState<Record<string, any[]>>({});
+    const [cachedSuggestionsMap, setCachedSuggestionsMap] = useState<Record<string, SpotifyTrack[]>>({});
 
     useEffect(() => {
         fetchLibrary();
@@ -27,17 +49,17 @@ export default function Dashboard() {
     // Load cached suggestions for visible songs
     useEffect(() => {
         if (songs.length > 0) {
-            const newCacheMap: Record<string, any[]> = {};
+            const newCacheMap: Record<string, SpotifyTrack[]> = {};
             songs.forEach(song => {
                 const cacheKey = `gemini_cache_${song.id}`;
                 const cachedData = localStorage.getItem(cacheKey);
                 if (cachedData) {
                     try {
-                        const parsed = JSON.parse(cachedData);
-                        if (parsed.suggestions && parsed.suggestions.length > 0) {
+                        const parsed = JSON.parse(cachedData) as GeminiCacheEntry;
+                        if (Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
                             newCacheMap[song.id] = parsed.suggestions;
                         }
-                    } catch (e) {
+                    } catch {
                         // Ignore parse errors
                     }
                 }
@@ -56,13 +78,14 @@ export default function Dashboard() {
             { threshold: 0.1 }
         );
 
-        if (observerTarget.current) {
-            observer.observe(observerTarget.current);
+        const currentTarget = observerTarget.current;
+        if (currentTarget) {
+            observer.observe(currentTarget);
         }
 
         return () => {
-            if (observerTarget.current) {
-                observer.unobserve(observerTarget.current);
+            if (currentTarget) {
+                observer.unobserve(currentTarget);
             }
         };
     }, [hasMore, isLoadingMore, loadMore]);
@@ -76,8 +99,6 @@ export default function Dashboard() {
 
         setSelectedSong(song);
         setIsGeminiLoading(true);
-        setGeminiSuggestions([]);
-        setGeminiText("");
 
         // Check LocalStorage first
         const cacheKey = `gemini_cache_${song.id}`;
@@ -85,41 +106,81 @@ export default function Dashboard() {
 
         if (cachedData) {
             try {
-                const { text, suggestions } = JSON.parse(cachedData);
-                setGeminiText(text);
-                setGeminiSuggestions(suggestions);
+                const parsed = JSON.parse(cachedData) as GeminiCacheEntry;
+                if (Array.isArray(parsed.suggestions)) {
+                    setCachedSuggestionsMap(prev => ({
+                        ...prev,
+                        [song.id]: parsed.suggestions ?? []
+                    }));
+                }
                 setIsGeminiLoading(false);
                 return;
-            } catch (e) {
-                console.error("Failed to parse cached data", e);
+            } catch (error) {
+                console.error("Failed to parse cached data", error);
                 localStorage.removeItem(cacheKey);
             }
         }
 
         const result = await getGeminiSuggestionsAction(song.name, song.artists[0].name);
 
-        if (result.success && result.suggestions) {
-            setGeminiText(result.text || "");
-            setGeminiSuggestions(result.suggestions);
+        if (result.success && Array.isArray(result.suggestions)) {
+            const suggestions = result.suggestions as SpotifyTrack[];
 
             // Save to LocalStorage
             localStorage.setItem(cacheKey, JSON.stringify({
                 text: result.text,
-                suggestions: result.suggestions,
+                suggestions,
                 timestamp: Date.now()
             }));
 
             // Update cache map
             setCachedSuggestionsMap(prev => ({
                 ...prev,
-                [song.id]: result.suggestions
+                [song.id]: suggestions
             }));
         }
 
         setIsGeminiLoading(false);
     };
 
-    if (isLoading && songs.length === 0) {
+    const handleBuildVibes = async () => {
+        if (isBuilding || isBuildingLibrary || isPreparingLibrary) return;
+        setIsPreparingLibrary(true);
+        let allSongs: EnrichedTrack[] = [];
+        try {
+            allSongs = await loadAll();
+        } finally {
+            setIsPreparingLibrary(false);
+        }
+        const library = allSongs.length > 0 ? allSongs : songs;
+        await buildVibePlaylists(library);
+    };
+
+    const handleBuildLibraryPlaylist = async () => {
+        if (isBuilding || isBuildingLibrary || isPreparingLibrary) return;
+        setIsPreparingLibrary(true);
+        let allSongs: EnrichedTrack[] = [];
+        try {
+            allSongs = await loadAll();
+        } finally {
+            setIsPreparingLibrary(false);
+        }
+        const library = allSongs.length > 0 ? allSongs : songs;
+        await buildLibraryPlaylist(library);
+    };
+
+    const handleLoadNetwork = async () => {
+        if (isPreparingLibrary) return;
+        setIsPreparingLibrary(true);
+        try {
+            await loadAll();
+            setNetworkSeed(Date.now());
+        } finally {
+            setIsPreparingLibrary(false);
+        }
+    };
+
+    if (isLoading && songs.length === 0 && viewMode === "recommends") {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-black text-white">
                 <Loader2 className="h-10 w-10 animate-spin text-green-500" />
@@ -149,6 +210,12 @@ export default function Dashboard() {
                     Sort Liked Songs
                 </button>
                 <button
+                    onClick={() => setViewMode("network")}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === "network" ? "bg-white text-black shadow-sm" : "text-zinc-400 hover:text-white hover:bg-zinc-900"}`}
+                >
+                    Network Map
+                </button>
+                <button
                     onClick={() => {
                         localStorage.removeItem('spotify_library_cache');
                         signOutAction();
@@ -160,7 +227,7 @@ export default function Dashboard() {
             </div>
 
             <div className="max-w-4xl mx-auto mt-24">
-                {viewMode === 'recommends' ? (
+                {viewMode === "recommends" ? (
                     <div className="space-y-2">
                         {/* <div className="flex justify-between items-end mb-6 px-2">
                             <div>
@@ -209,28 +276,28 @@ export default function Dashboard() {
                                             <div className="flex flex-col gap-2 w-full">
                                                 {/* Suggested Songs - Horizontal Scroll */}
                                                 <div className="flex gap-3 items-center overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-2">
-                                                    {cachedSuggestionsMap[song.id].map((suggestion: any) => (
-                                                        <div
-                                                            key={suggestion.id}
-                                                            className="flex flex-col justify-center min-w-[140px] h-20 p-2 bg-zinc-900/80 rounded-md cursor-pointer hover:bg-zinc-800 transition-all group relative shrink-0"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                playTrack(suggestion.uri);
-                                                            }}
-                                                        >
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                {suggestion.album.images[2] && (
-                                                                    <img src={suggestion.album.images[2].url} alt={suggestion.name} className="w-8 h-8 rounded shadow-sm" />
-                                                                )}
-                                                                <div className="overflow-hidden">
-                                                                    <p className="text-xs font-medium text-zinc-300 group-hover:text-white truncate">
-                                                                        {suggestion.name}
-                                                                    </p>
-                                                                    <p className="text-[10px] text-zinc-500 truncate">
-                                                                        {suggestion.artists.map((a: any) => a.name).join(", ")}
-                                                                    </p>
-                                                                </div>
+                                                {cachedSuggestionsMap[song.id].map((suggestion: SpotifyTrack) => (
+                                                    <div
+                                                        key={suggestion.id}
+                                                        className="flex flex-col justify-center min-w-[140px] h-20 p-2 bg-zinc-900/80 rounded-md cursor-pointer hover:bg-zinc-800 transition-all group relative shrink-0"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playTrack(suggestion.uri);
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            {suggestion.album.images[2] && (
+                                                                <img src={suggestion.album.images[2].url} alt={suggestion.name} className="w-8 h-8 rounded shadow-sm" />
+                                                            )}
+                                                            <div className="overflow-hidden">
+                                                                <p className="text-xs font-medium text-zinc-300 group-hover:text-white truncate">
+                                                                    {suggestion.name}
+                                                                </p>
+                                                                <p className="text-[10px] text-zinc-500 truncate">
+                                                                    {suggestion.artists.map((artist) => artist.name).join(", ")}
+                                                                </p>
                                                             </div>
+                                                        </div>
                                                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-md">
                                                                 <Play className="w-6 h-6 fill-white text-white drop-shadow-md" />
                                                             </div>
@@ -245,8 +312,9 @@ export default function Dashboard() {
                                                     let text = "";
                                                     if (cachedData) {
                                                         try {
-                                                            text = JSON.parse(cachedData).text;
-                                                        } catch (e) { }
+                                                            const parsed = JSON.parse(cachedData) as GeminiCacheEntry;
+                                                            text = parsed.text ?? "";
+                                                        } catch { }
                                                     }
                                                     return text ? (
                                                         <div className="w-full p-2 bg-zinc-900/40 rounded-md text-[10px] text-zinc-400 leading-tight whitespace-pre-wrap animate-in fade-in slide-in-from-top-1 duration-300">
@@ -293,18 +361,158 @@ export default function Dashboard() {
                             </div>
                         )}
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-20 text-center space-y-6 animate-in fade-in duration-500">
+                ) : viewMode === "sort" ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 animate-in fade-in duration-500">
                         <div className="p-4 bg-zinc-900/50 rounded-full">
                             <Sparkles className="w-8 h-8 text-purple-400" />
                         </div>
-                        <div className="max-w-md space-y-2">
+                        <div className="max-w-xl space-y-2">
                             <h2 className="text-xl font-bold">AI Playlist Sorter</h2>
                             <p className="text-zinc-400 leading-relaxed">
-                                Load the full list of Liked songs, then send them to Gemini, and ask it to sort them into new playlists based on vibe, genre, or mood.
+                                Build vibe playlists from your liked songs, then add 10 new tracks that match each vibe.
+                            </p>
+                            <p className="text-xs text-zinc-500">
+                                {total > 0 ? `${songs.length} / ${total}` : songs.length} liked songs loaded.
                             </p>
                         </div>
-                        <Button variant="outline" className="mt-4" disabled>Coming Soon</Button>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Button
+                                variant="primary"
+                                isLoading={isPreparingLibrary || isBuilding}
+                                onClick={handleBuildVibes}
+                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
+                            >
+                                {isPreparingLibrary ? "Loading Library..." : "Build Vibe Playlists"}
+                            </Button>
+                            <Button
+                                variant="secondary"
+                                isLoading={isBuildingLibrary}
+                                onClick={handleBuildLibraryPlaylist}
+                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
+                            >
+                                {isBuildingLibrary ? "Building Library..." : "Build Library Playlist"}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={resetState}
+                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
+                            >
+                                Reset Vibe Cache
+                            </Button>
+                        </div>
+
+                        {(isPreparingLibrary || isLoading) && (
+                            <p className="text-xs text-zinc-400">
+                                Loading library... {Math.round(progress)}%
+                            </p>
+                        )}
+
+                        {error && (
+                            <p className="text-sm text-red-400">{error}</p>
+                        )}
+
+                        {steps.length > 0 && (
+                            <div className="w-full max-w-xl bg-zinc-900/50 rounded-lg p-4 text-left">
+                                <h3 className="text-sm font-semibold text-zinc-200">Progress</h3>
+                                <ul className="mt-2 space-y-1 list-disc list-inside text-xs text-zinc-400">
+                                    {steps.map((step, index) => (
+                                        <li key={`${step}-${index}`}>{step}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {results.length > 0 && (
+                            <div className="w-full max-w-xl space-y-2">
+                                <h3 className="text-sm font-semibold text-zinc-200">Playlists</h3>
+                                {results.map(result => (
+                                    <div
+                                        key={result.id}
+                                        className="flex items-center justify-between gap-4 bg-zinc-900/40 rounded-md p-3"
+                                    >
+                                        <div className="text-left">
+                                            <p className="text-sm font-medium text-white">{result.name}</p>
+                                            <p className="text-xs text-zinc-500">
+                                                {result.addedLikedCount} liked · {result.addedNewCount} new
+                                            </p>
+                                        </div>
+                                        {result.url && (
+                                            <a
+                                                href={result.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-xs text-green-400 hover:text-green-300"
+                                            >
+                                                Open
+                                            </a>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {libraryResult && (
+                            <div className="w-full max-w-xl space-y-2">
+                                <h3 className="text-sm font-semibold text-zinc-200">Library Playlist</h3>
+                                <div className="flex items-center justify-between gap-4 bg-zinc-900/40 rounded-md p-3">
+                                    <div className="text-left">
+                                        <p className="text-sm font-medium text-white">{libraryResult.name}</p>
+                                        <p className="text-xs text-zinc-500">
+                                            {libraryResult.totalTracks} songs · {libraryResult.groupCount} groups
+                                        </p>
+                                    </div>
+                                    {libraryResult.url && (
+                                        <a
+                                            href={libraryResult.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-xs text-green-400 hover:text-green-300"
+                                        >
+                                            Open
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-6 animate-in fade-in duration-500">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                            <div className="space-y-2">
+                                <h2 className="text-xl font-bold">Network Map</h2>
+                                <p className="text-sm text-zinc-400 max-w-xl">
+                                    Explore all of your liked song covers as a 2D network grouped by vibe and artist connections.
+                                </p>
+                                <p className="text-xs text-zinc-500">
+                                    {isFullLibraryLoaded ? `${songs.length} songs mapped.` : "Load your full library to map everything."}
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant="primary"
+                                    isLoading={isPreparingLibrary}
+                                    onClick={handleLoadNetwork}
+                                    disabled={isPreparingLibrary}
+                                >
+                                    {isPreparingLibrary ? "Loading Library..." : "Load Full Library"}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setNetworkSeed(Date.now())}
+                                    disabled={!isFullLibraryLoaded}
+                                >
+                                    Shuffle Layout
+                                </Button>
+                            </div>
+                        </div>
+
+                        {(isPreparingLibrary || isLoading) && (
+                            <p className="text-xs text-zinc-400">
+                                Loading library... {Math.round(progress)}%
+                            </p>
+                        )}
+
+                        <SongNetwork songs={isFullLibraryLoaded ? songs : []} seed={networkSeed} />
                     </div>
                 )}
             </div>

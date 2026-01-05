@@ -1,13 +1,13 @@
 "use client";
 
 import { createContext, useContext, ReactNode } from "react";
-import { useSpotifyPlayer } from "@/hooks/useSpotifyPlayer";
+import { useSpotifyPlayer, SpotifyTrackInfo, SpotifyWebPlaybackPlayer } from "@/hooks/useSpotifyPlayer";
 
 interface PlayerContextType {
-    player: any;
+    player: SpotifyWebPlaybackPlayer | null;
     isPaused: boolean;
     isActive: boolean;
-    currentTrack: any;
+    currentTrack: SpotifyTrackInfo | null;
     playTrack: (uri: string) => Promise<void>;
     deviceId: string | null;
     togglePlay: () => void;
