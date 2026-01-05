@@ -187,7 +187,7 @@ Rules:
         }
 
         return { success: true, vibeName, vibeDescription, suggestions };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error getting Gemini vibe plan:", error);
         return { success: false, error: "Failed to get vibe plan" };
     }
@@ -202,7 +202,7 @@ export async function createPlaylistAction(
     try {
         const data = await createPlaylist(userId, name, description, isPublic);
         return { success: true, data };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error creating playlist:", error);
         return { success: false, error: "Failed to create playlist" };
     }
@@ -219,7 +219,7 @@ export async function addTracksToPlaylistAction(playlistId: string, uris: string
         }
         const results = await Promise.all(batches);
         return { success: true, data: results };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error adding tracks to playlist:", error);
         return { success: false, error: "Failed to add tracks to playlist" };
     }
@@ -242,7 +242,7 @@ export async function replacePlaylistTracksAction(playlistId: string, uris: stri
         }
 
         return { success: true, data: { replace: replaceResult, add: addResult.data } };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error replacing playlist tracks:", error);
         return { success: false, error: "Failed to replace playlist tracks" };
     }
@@ -252,7 +252,7 @@ export async function getArtistTopTracksAction(artistId: string, market: string)
     try {
         const data = await getArtistTopTracks(artistId, market);
         return { success: true, data };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error fetching artist top tracks:", error);
         return { success: false, error: "Failed to fetch artist top tracks" };
     }
