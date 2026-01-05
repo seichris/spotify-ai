@@ -1,19 +1,18 @@
 import { auth } from "@/auth";
-import HomeGate from "@/components/HomeGate";
+import { redirect } from "next/navigation";
+import Dashboard from "@/components/Dashboard";
+import { PlayerProvider } from "@/components/PlayerProvider";
 
 export default async function Home() {
   const session = await auth();
-  const serverAccessToken = session?.access_token ?? null;
-  const nextAuthEnabled = Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
-  const pkceClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? process.env.SPOTIFY_CLIENT_ID ?? null;
-  const pkceEnabled = Boolean(pkceClientId);
+
+  if (!session?.user) {
+    redirect("/login");
+  }
 
   return (
-    <HomeGate
-      serverAccessToken={serverAccessToken}
-      nextAuthEnabled={nextAuthEnabled}
-      pkceEnabled={pkceEnabled}
-      pkceClientId={pkceClientId}
-    />
+    <PlayerProvider token={session.access_token!}>
+      <Dashboard />
+    </PlayerProvider>
   );
 }

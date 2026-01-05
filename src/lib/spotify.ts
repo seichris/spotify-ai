@@ -11,12 +11,8 @@ async function getAccessToken() {
     return session.access_token;
 }
 
-export async function fetchSpotify(
-    endpoint: string,
-    options: RequestInit = {},
-    accessToken?: string
-) {
-    const token = accessToken ?? await getAccessToken();
+export async function fetchSpotify(endpoint: string, options: RequestInit = {}) {
+    const token = await getAccessToken();
     const url = `${SPOTIFY_API_BASE}${endpoint}`;
     console.log(`Fetching Spotify: ${url}`);
     const res = await fetch(url, {
@@ -78,35 +74,24 @@ export interface AudioFeatures {
     tempo: number;
 }
 
-export async function getLikedSongs(limit = 50, offset = 0, accessToken?: string) {
-    return fetchSpotify(`/me/tracks?limit=${limit}&offset=${offset}`, {}, accessToken);
+export async function getLikedSongs(limit = 50, offset = 0) {
+    return fetchSpotify(`/me/tracks?limit=${limit}&offset=${offset}`);
 }
 
-export async function getAudioFeatures(ids: string[], accessToken?: string) {
-    return fetchSpotify(`/audio-features?ids=${ids.join(",")}`, {}, accessToken);
+export async function getAudioFeatures(ids: string[]) {
+    return fetchSpotify(`/audio-features?ids=${ids.join(",")}`);
 }
 
-export async function searchSpotify(
-    query: string,
-    type: string = 'track',
-    limit: number = 1,
-    accessToken?: string
-) {
+export async function searchSpotify(query: string, type: string = 'track', limit: number = 1) {
     const params = new URLSearchParams({
         q: query,
         type,
         limit: limit.toString()
     });
-    return fetchSpotify(`/search?${params.toString()}`, {}, accessToken);
+    return fetchSpotify(`/search?${params.toString()}`);
 }
 
-export async function createPlaylist(
-    userId: string,
-    name: string,
-    description: string,
-    isPublic = false,
-    accessToken?: string
-) {
+export async function createPlaylist(userId: string, name: string, description: string, isPublic = false) {
     return fetchSpotify(`/users/${userId}/playlists`, {
         method: "POST",
         headers: {
@@ -117,30 +102,30 @@ export async function createPlaylist(
             description,
             public: isPublic,
         }),
-    }, accessToken);
+    });
 }
 
-export async function addTracksToPlaylist(playlistId: string, uris: string[], accessToken?: string) {
+export async function addTracksToPlaylist(playlistId: string, uris: string[]) {
     return fetchSpotify(`/playlists/${playlistId}/tracks`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({ uris }),
-    }, accessToken);
+    });
 }
 
-export async function replacePlaylistTracks(playlistId: string, uris: string[], accessToken?: string) {
+export async function replacePlaylistTracks(playlistId: string, uris: string[]) {
     return fetchSpotify(`/playlists/${playlistId}/tracks`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({ uris }),
-    }, accessToken);
+    });
 }
 
-export async function getArtistTopTracks(artistId: string, market: string, accessToken?: string) {
+export async function getArtistTopTracks(artistId: string, market: string) {
     const params = new URLSearchParams({ market });
-    return fetchSpotify(`/artists/${artistId}/top-tracks?${params.toString()}`, {}, accessToken);
+    return fetchSpotify(`/artists/${artistId}/top-tracks?${params.toString()}`);
 }

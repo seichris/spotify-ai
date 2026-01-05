@@ -9,8 +9,7 @@ import { Loader2, Play, SkipBack, Pause, SkipForward, Sparkles } from "lucide-re
 import { useState, useEffect, useRef } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import { SpotifyTrack } from "@/lib/spotify";
-import { getGeminiSuggestionsAction } from "@/app/actions";
-import { useSpotifyAuth } from "@/hooks/useSpotifyAuth";
+import { signOutAction, getGeminiSuggestionsAction } from "@/app/actions";
 
 type GeminiCacheEntry = {
     text?: string;
@@ -18,7 +17,6 @@ type GeminiCacheEntry = {
 };
 
 export default function Dashboard() {
-    const { accessToken, signOut } = useSpotifyAuth();
     const { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll } = useSpotifyLibrary();
     const { isActive, isPaused, playTrack, togglePlay, nextTrack, previousTrack } = usePlayer();
     const [selectedSong, setSelectedSong] = useState<EnrichedTrack | null>(null);
@@ -101,10 +99,6 @@ export default function Dashboard() {
 
         setSelectedSong(song);
         setIsGeminiLoading(true);
-        if (!accessToken) {
-            setIsGeminiLoading(false);
-            return;
-        }
 
         // Check LocalStorage first
         const cacheKey = `gemini_cache_${song.id}`;
@@ -127,11 +121,7 @@ export default function Dashboard() {
             }
         }
 
-        const result = await getGeminiSuggestionsAction(
-            song.name,
-            song.artists[0].name,
-            accessToken ?? undefined
-        );
+        const result = await getGeminiSuggestionsAction(song.name, song.artists[0].name);
 
         if (result.success && Array.isArray(result.suggestions)) {
             const suggestions = result.suggestions as SpotifyTrack[];
@@ -197,7 +187,7 @@ export default function Dashboard() {
                 <p className="mt-4 text-zinc-400">Loading your library... {Math.round(progress)}%</p>
                 <Button variant="outline" className="mt-8" onClick={() => {
                     localStorage.removeItem('spotify_library_cache');
-                    signOut();
+                    signOutAction();
                 }}>X</Button>
             </div>
         );
@@ -228,7 +218,7 @@ export default function Dashboard() {
                 <button
                     onClick={() => {
                         localStorage.removeItem('spotify_library_cache');
-                        signOut();
+                        signOutAction();
                     }}
                     className="px-4 py-2 rounded-full text-sm font-medium transition-all text-zinc-400 hover:text-white hover:bg-zinc-900"
                 >
