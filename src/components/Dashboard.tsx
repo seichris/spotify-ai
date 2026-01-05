@@ -19,7 +19,17 @@ export default function Dashboard() {
     const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
     const [networkSeed, setNetworkSeed] = useState(0);
 
-    const { isBuilding, steps, results, error, buildVibePlaylists, resetState } = useVibePlaylists();
+    const {
+        isBuilding,
+        isBuildingLibrary,
+        steps,
+        results,
+        libraryResult,
+        error,
+        buildVibePlaylists,
+        buildLibraryPlaylist,
+        resetState,
+    } = useVibePlaylists();
 
     const isFullLibraryLoaded = total > 0 && songs.length >= total && !hasMore;
 
@@ -128,7 +138,7 @@ export default function Dashboard() {
     };
 
     const handleBuildVibes = async () => {
-        if (isBuilding || isPreparingLibrary) return;
+        if (isBuilding || isBuildingLibrary || isPreparingLibrary) return;
         setIsPreparingLibrary(true);
         let allSongs: EnrichedTrack[] = [];
         try {
@@ -138,6 +148,19 @@ export default function Dashboard() {
         }
         const library = allSongs.length > 0 ? allSongs : songs;
         await buildVibePlaylists(library);
+    };
+
+    const handleBuildLibraryPlaylist = async () => {
+        if (isBuilding || isBuildingLibrary || isPreparingLibrary) return;
+        setIsPreparingLibrary(true);
+        let allSongs: EnrichedTrack[] = [];
+        try {
+            allSongs = await loadAll();
+        } finally {
+            setIsPreparingLibrary(false);
+        }
+        const library = allSongs.length > 0 ? allSongs : songs;
+        await buildLibraryPlaylist(library);
     };
 
     const handleLoadNetwork = async () => {
@@ -350,14 +373,22 @@ export default function Dashboard() {
                                 variant="primary"
                                 isLoading={isPreparingLibrary || isBuilding}
                                 onClick={handleBuildVibes}
-                                disabled={isPreparingLibrary || isBuilding}
+                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
                             >
                                 {isPreparingLibrary ? "Loading Library..." : "Build Vibe Playlists"}
                             </Button>
                             <Button
+                                variant="secondary"
+                                isLoading={isBuildingLibrary}
+                                onClick={handleBuildLibraryPlaylist}
+                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
+                            >
+                                {isBuildingLibrary ? "Building Library..." : "Build Library Playlist"}
+                            </Button>
+                            <Button
                                 variant="outline"
                                 onClick={resetState}
-                                disabled={isPreparingLibrary || isBuilding}
+                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
                             >
                                 Reset Vibe Cache
                             </Button>
@@ -410,6 +441,30 @@ export default function Dashboard() {
                                         )}
                                     </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {libraryResult && (
+                            <div className="w-full max-w-xl space-y-2">
+                                <h3 className="text-sm font-semibold text-zinc-200">Library Playlist</h3>
+                                <div className="flex items-center justify-between gap-4 bg-zinc-900/40 rounded-md p-3">
+                                    <div className="text-left">
+                                        <p className="text-sm font-medium text-white">{libraryResult.name}</p>
+                                        <p className="text-xs text-zinc-500">
+                                            {libraryResult.totalTracks} songs · {libraryResult.groupCount} groups
+                                        </p>
+                                    </div>
+                                    {libraryResult.url && (
+                                        <a
+                                            href={libraryResult.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-xs text-green-400 hover:text-green-300"
+                                        >
+                                            Open
+                                        </a>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>

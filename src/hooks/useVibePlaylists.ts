@@ -8,6 +8,7 @@ import {
     getArtistTopTracksAction,
     getGeminiVibePlanAction,
     getUserProfileAction,
+    replacePlaylistTracksAction,
 } from "@/app/actions";
 
 const STATE_KEY = "vibe_playlist_state_v1";
@@ -40,7 +41,14 @@ interface VibeState {
     version: 1;
     analyzedSongIds: string[];
     addedTrackIds: string[];
+    songToVibes: Record<string, string[]>;
     vibes: Record<string, VibeProfile>;
+    bigPlaylist?: {
+        id: string;
+        name: string;
+        url?: string;
+        updatedAt: number;
+    };
     lastRunAt?: number;
 }
 
@@ -60,11 +68,21 @@ export interface PlaylistBuildResult {
     addedNewCount: number;
 }
 
+export interface LibraryPlaylistResult {
+    id: string;
+    name: string;
+    url?: string;
+    totalTracks: number;
+    groupCount: number;
+}
+
 const createEmptyState = (): VibeState => ({
     version: 1,
     analyzedSongIds: [],
     addedTrackIds: [],
+    songToVibes: {},
     vibes: {},
+    bigPlaylist: undefined,
     lastRunAt: undefined,
 });
 
@@ -86,6 +104,7 @@ const loadState = (): VibeState => {
             ...createEmptyState(),
             ...parsed,
             vibes: parsed.vibes || {},
+            songToVibes: parsed.songToVibes || {},
         } as VibeState;
     } catch (error) {
         console.error("Failed to parse vibe state", error);
@@ -239,11 +258,19 @@ const dedupeTracks = (tracks: TrackSummary[]) => {
     });
 };
 
+const addSongToVibeMap = (map: Record<string, string[]>, songId: string, vibeId: string) => {
+    const existing = map[songId] ?? [];
+    if (existing.includes(vibeId)) return;
+    map[songId] = [...existing, vibeId];
+};
+
 export function useVibePlaylists() {
     const [isBuilding, setIsBuilding] = useState(false);
     const [steps, setSteps] = useState<string[]>([]);
     const [results, setResults] = useState<PlaylistBuildResult[]>([]);
+    const [libraryResult, setLibraryResult] = useState<LibraryPlaylistResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [isBuildingLibrary, setIsBuildingLibrary] = useState(false);
 
     const logStep = (message: string) => {
         setSteps(prev => [...prev, message]);
@@ -254,6 +281,7 @@ export function useVibePlaylists() {
         localStorage.removeItem(STATE_KEY);
         setSteps([]);
         setResults([]);
+        setLibraryResult(null);
         setError(null);
     }, []);
 
@@ -261,6 +289,7 @@ export function useVibePlaylists() {
         setIsBuilding(true);
         setSteps([]);
         setResults([]);
+        setLibraryResult(null);
         setError(null);
 
         try {
@@ -278,9 +307,11 @@ export function useVibePlaylists() {
             const analyzedSet = new Set(state.analyzedSongIds);
             const persistedAddedSet = new Set(state.addedTrackIds);
             const runAddedSet = new Set<string>();
+            const songToVibes = state.songToVibes ?? {};
             const syncStateSets = () => {
                 state.analyzedSongIds = Array.from(analyzedSet);
                 state.addedTrackIds = Array.from(new Set([...persistedAddedSet, ...runAddedSet]));
+                state.songToVibes = songToVibes;
             };
             const hasVibes = Object.keys(state.vibes).length > 0;
 
@@ -335,12 +366,15 @@ export function useVibePlaylists() {
                 if (!vibe || tracks.length === 0) continue;
 
                 const uniqueTracks = dedupeTracks(tracks);
+                uniqueTracks.forEach(track => addSongToVibeMap(songToVibes, track.id, vibeId));
                 const urisToAdd = uniqueTracks
                     .filter(track => !persistedAddedSet.has(track.id))
                     .map(track => track.uri);
 
                 if (urisToAdd.length === 0) {
                     uniqueTracks.forEach(track => analyzedSet.add(track.id));
+                    syncStateSets();
+                    saveState(state);
                     continue;
                 }
 
@@ -491,6 +525,7 @@ export function useVibePlaylists() {
                 activeCluster.tracks.forEach(track => {
                     analyzedSet.add(track.id);
                     runAddedSet.add(track.id);
+                    addSongToVibeMap(songToVibes, track.id, vibeId);
                 });
 
                 newTracks.forEach(track => {
@@ -522,12 +557,141 @@ export function useVibePlaylists() {
         }
     }, []);
 
+    const buildLibraryPlaylist = useCallback(async (songs: EnrichedTrack[]) => {
+        setIsBuildingLibrary(true);
+        setSteps([]);
+        setResults([]);
+        setLibraryResult(null);
+        setError(null);
+
+        try {
+            const likedSongs = songs
+                .filter(track => track.id && track.type === "track" && !track.is_local)
+                .map(toTrackSummary);
+
+            if (likedSongs.length === 0) {
+                setError("No liked songs available. Load your library first.");
+                return;
+            }
+
+            const state = loadState();
+            const songToVibes = state.songToVibes ?? {};
+            const vibeEntries = Object.entries(state.vibes || {}).sort((a, b) =>
+                a[1].name.localeCompare(b[1].name)
+            );
+            const hasVibes = vibeEntries.length > 0;
+
+            const grouped: Record<string, TrackSummary[]> = {};
+            const fallback: Record<string, TrackSummary[]> = {};
+
+            likedSongs.forEach(track => {
+                const savedVibes = songToVibes[track.id]?.filter(vibeId => state.vibes[vibeId]);
+                if (savedVibes && savedVibes.length > 0) {
+                    const vibeId = savedVibes[0];
+                    if (!grouped[vibeId]) grouped[vibeId] = [];
+                    grouped[vibeId].push(track);
+                    return;
+                }
+
+                if (hasVibes) {
+                    const matches = pickVibeMatches(track, state.vibes);
+                    if (matches.length > 0) {
+                        const vibeId = matches[0];
+                        if (!grouped[vibeId]) grouped[vibeId] = [];
+                        grouped[vibeId].push(track);
+                        addSongToVibeMap(songToVibes, track.id, vibeId);
+                        return;
+                    }
+                }
+
+                const fallbackKey = `genre:${getPrimaryGenre(track)}`;
+                if (!fallback[fallbackKey]) fallback[fallbackKey] = [];
+                fallback[fallbackKey].push(track);
+            });
+
+            const orderedTracks: TrackSummary[] = [];
+            vibeEntries.forEach(([vibeId]) => {
+                const group = grouped[vibeId];
+                if (group && group.length > 0) {
+                    orderedTracks.push(...group);
+                }
+            });
+
+            const fallbackEntries = Object.entries(fallback).sort((a, b) => b[1].length - a[1].length);
+            fallbackEntries.forEach(([, group]) => orderedTracks.push(...group));
+
+            if (orderedTracks.length === 0) {
+                setError("Could not build a vibe-ordered playlist.");
+                return;
+            }
+
+            const profileResult = await getUserProfileAction();
+            if (!profileResult.success || !profileResult.data) {
+                setError("Failed to load Spotify profile.");
+                return;
+            }
+
+            const userId = profileResult.data.id;
+            const description =
+                "All liked songs grouped by vibe. Generated by Gemini using your saved vibe profiles.";
+
+            let playlistId = state.bigPlaylist?.id;
+            let playlistName = state.bigPlaylist?.name || "Gemini Library - Vibe Order";
+            let playlistUrl = state.bigPlaylist?.url;
+
+            if (!playlistId) {
+                logStep(`Creating library playlist \"${playlistName}\".`);
+                const createResult = await createPlaylistAction(userId, playlistName, description, false);
+                if (!createResult.success || !createResult.data) {
+                    setError("Failed to create the library playlist.");
+                    return;
+                }
+                playlistId = createResult.data.id as string;
+                playlistUrl = createResult.data.external_urls?.spotify as string | undefined;
+            } else {
+                logStep(`Updating library playlist \"${playlistName}\".`);
+            }
+
+            const orderedUris = orderedTracks.map(track => track.uri);
+            const replaceResult = await replacePlaylistTracksAction(playlistId, orderedUris);
+            if (!replaceResult.success) {
+                setError("Failed to update the library playlist.");
+                return;
+            }
+
+            state.songToVibes = songToVibes;
+            state.bigPlaylist = {
+                id: playlistId,
+                name: playlistName,
+                url: playlistUrl,
+                updatedAt: Date.now(),
+            };
+            saveState(state);
+
+            setLibraryResult({
+                id: playlistId,
+                name: playlistName,
+                url: playlistUrl,
+                totalTracks: orderedUris.length,
+                groupCount: vibeEntries.length + fallbackEntries.length,
+            });
+        } catch (err: any) {
+            console.error("Error building library playlist", err);
+            setError(err?.message || "Failed to build library playlist.");
+        } finally {
+            setIsBuildingLibrary(false);
+        }
+    }, []);
+
     return {
         isBuilding,
+        isBuildingLibrary,
         steps,
         results,
+        libraryResult,
         error,
         buildVibePlaylists,
+        buildLibraryPlaylist,
         resetState,
     };
 }

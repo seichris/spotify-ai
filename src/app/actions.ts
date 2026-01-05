@@ -7,6 +7,7 @@ import {
     searchSpotify,
     createPlaylist,
     addTracksToPlaylist,
+    replacePlaylistTracks,
     getArtistTopTracks,
 } from "@/lib/spotify";
 import { generateSongSuggestions } from "@/lib/gemini";
@@ -221,6 +222,29 @@ export async function addTracksToPlaylistAction(playlistId: string, uris: string
     } catch (error: any) {
         console.error("Error adding tracks to playlist:", error);
         return { success: false, error: "Failed to add tracks to playlist" };
+    }
+}
+
+export async function replacePlaylistTracksAction(playlistId: string, uris: string[]) {
+    try {
+        if (uris.length <= 100) {
+            const data = await replacePlaylistTracks(playlistId, uris);
+            return { success: true, data };
+        }
+
+        const firstBatch = uris.slice(0, 100);
+        const remaining = uris.slice(100);
+        const replaceResult = await replacePlaylistTracks(playlistId, firstBatch);
+        const addResult = await addTracksToPlaylistAction(playlistId, remaining);
+
+        if (!addResult.success) {
+            return { success: false, error: "Failed to add remaining tracks" };
+        }
+
+        return { success: true, data: { replace: replaceResult, add: addResult.data } };
+    } catch (error: any) {
+        console.error("Error replacing playlist tracks:", error);
+        return { success: false, error: "Failed to replace playlist tracks" };
     }
 }
 

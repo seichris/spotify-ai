@@ -115,6 +115,16 @@ export async function addTracksToPlaylist(playlistId: string, uris: string[]) {
     });
 }
 
+export async function replacePlaylistTracks(playlistId: string, uris: string[]) {
+    return fetchSpotify(`/playlists/${playlistId}/tracks`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ uris }),
+    });
+}
+
 export async function getArtistTopTracks(artistId: string, market: string) {
     const params = new URLSearchParams({ market });
     return fetchSpotify(`/artists/${artistId}/top-tracks?${params.toString()}`);
