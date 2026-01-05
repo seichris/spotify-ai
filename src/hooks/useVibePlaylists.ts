@@ -475,7 +475,7 @@ export function useVibePlaylists() {
                     token
                 );
                 if (!playlistResult.success || !playlistResult.data) {
-                    logStep(`Failed to create playlist for ${vibeName}.`);
+                    logStep(`Failed to create playlist for ${safeVibeName}.`);
                     continue;
                 }
 
