@@ -1,19 +1,27 @@
 "use client";
 
 import { useSpotifyLibrary } from "@/hooks/useSpotifyLibrary";
+import { useVibePlaylists } from "@/hooks/useVibePlaylists";
 import { usePlayer } from "@/components/PlayerProvider";
 import { Button } from "@/components/ui/Button";
+import SongNetwork from "@/components/SongNetwork";
 import { Loader2, Play, SkipBack, Pause, SkipForward, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import { signOutAction, getGeminiSuggestionsAction } from "@/app/actions";
 
 export default function Dashboard() {
-    const { songs, isLoading, isLoadingMore, hasMore, progress, fetchLibrary, loadMore } = useSpotifyLibrary();
+    const { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll } = useSpotifyLibrary();
     const { isActive, isPaused, playTrack, togglePlay, nextTrack, previousTrack } = usePlayer();
     const [selectedSong, setSelectedSong] = useState<EnrichedTrack | null>(null);
-    const [viewMode, setViewMode] = useState<'recommends' | 'sort'>('recommends');
+    const [viewMode, setViewMode] = useState<"recommends" | "sort" | "network">("recommends");
     const observerTarget = useRef(null);
+    const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
+    const [networkSeed, setNetworkSeed] = useState(0);
+
+    const { isBuilding, steps, results, error, buildVibePlaylists, resetState } = useVibePlaylists();
+
+    const isFullLibraryLoaded = total > 0 && songs.length >= total && !hasMore;
 
     const [geminiSuggestions, setGeminiSuggestions] = useState<any[]>([]);
     const [geminiText, setGeminiText] = useState<string>("");
@@ -119,7 +127,31 @@ export default function Dashboard() {
         setIsGeminiLoading(false);
     };
 
-    if (isLoading && songs.length === 0) {
+    const handleBuildVibes = async () => {
+        if (isBuilding || isPreparingLibrary) return;
+        setIsPreparingLibrary(true);
+        let allSongs: EnrichedTrack[] = [];
+        try {
+            allSongs = await loadAll();
+        } finally {
+            setIsPreparingLibrary(false);
+        }
+        const library = allSongs.length > 0 ? allSongs : songs;
+        await buildVibePlaylists(library);
+    };
+
+    const handleLoadNetwork = async () => {
+        if (isPreparingLibrary) return;
+        setIsPreparingLibrary(true);
+        try {
+            await loadAll();
+            setNetworkSeed(Date.now());
+        } finally {
+            setIsPreparingLibrary(false);
+        }
+    };
+
+    if (isLoading && songs.length === 0 && viewMode === "recommends") {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-black text-white">
                 <Loader2 className="h-10 w-10 animate-spin text-green-500" />
@@ -149,6 +181,12 @@ export default function Dashboard() {
                     Sort Liked Songs
                 </button>
                 <button
+                    onClick={() => setViewMode("network")}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === "network" ? "bg-white text-black shadow-sm" : "text-zinc-400 hover:text-white hover:bg-zinc-900"}`}
+                >
+                    Network Map
+                </button>
+                <button
                     onClick={() => {
                         localStorage.removeItem('spotify_library_cache');
                         signOutAction();
@@ -160,7 +198,7 @@ export default function Dashboard() {
             </div>
 
             <div className="max-w-4xl mx-auto mt-24">
-                {viewMode === 'recommends' ? (
+                {viewMode === "recommends" ? (
                     <div className="space-y-2">
                         {/* <div className="flex justify-between items-end mb-6 px-2">
                             <div>
@@ -293,18 +331,126 @@ export default function Dashboard() {
                             </div>
                         )}
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-20 text-center space-y-6 animate-in fade-in duration-500">
+                ) : viewMode === "sort" ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 animate-in fade-in duration-500">
                         <div className="p-4 bg-zinc-900/50 rounded-full">
                             <Sparkles className="w-8 h-8 text-purple-400" />
                         </div>
-                        <div className="max-w-md space-y-2">
+                        <div className="max-w-xl space-y-2">
                             <h2 className="text-xl font-bold">AI Playlist Sorter</h2>
                             <p className="text-zinc-400 leading-relaxed">
-                                Load the full list of Liked songs, then send them to Gemini, and ask it to sort them into new playlists based on vibe, genre, or mood.
+                                Build vibe playlists from your liked songs, then add 10 new tracks that match each vibe.
+                            </p>
+                            <p className="text-xs text-zinc-500">
+                                {total > 0 ? `${songs.length} / ${total}` : songs.length} liked songs loaded.
                             </p>
                         </div>
-                        <Button variant="outline" className="mt-4" disabled>Coming Soon</Button>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Button
+                                variant="primary"
+                                isLoading={isPreparingLibrary || isBuilding}
+                                onClick={handleBuildVibes}
+                                disabled={isPreparingLibrary || isBuilding}
+                            >
+                                {isPreparingLibrary ? "Loading Library..." : "Build Vibe Playlists"}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={resetState}
+                                disabled={isPreparingLibrary || isBuilding}
+                            >
+                                Reset Vibe Cache
+                            </Button>
+                        </div>
+
+                        {(isPreparingLibrary || isLoading) && (
+                            <p className="text-xs text-zinc-400">
+                                Loading library... {Math.round(progress)}%
+                            </p>
+                        )}
+
+                        {error && (
+                            <p className="text-sm text-red-400">{error}</p>
+                        )}
+
+                        {steps.length > 0 && (
+                            <div className="w-full max-w-xl bg-zinc-900/50 rounded-lg p-4 text-left">
+                                <h3 className="text-sm font-semibold text-zinc-200">Progress</h3>
+                                <ul className="mt-2 space-y-1 list-disc list-inside text-xs text-zinc-400">
+                                    {steps.map((step, index) => (
+                                        <li key={`${step}-${index}`}>{step}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {results.length > 0 && (
+                            <div className="w-full max-w-xl space-y-2">
+                                <h3 className="text-sm font-semibold text-zinc-200">Playlists</h3>
+                                {results.map(result => (
+                                    <div
+                                        key={result.id}
+                                        className="flex items-center justify-between gap-4 bg-zinc-900/40 rounded-md p-3"
+                                    >
+                                        <div className="text-left">
+                                            <p className="text-sm font-medium text-white">{result.name}</p>
+                                            <p className="text-xs text-zinc-500">
+                                                {result.addedLikedCount} liked · {result.addedNewCount} new
+                                            </p>
+                                        </div>
+                                        {result.url && (
+                                            <a
+                                                href={result.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-xs text-green-400 hover:text-green-300"
+                                            >
+                                                Open
+                                            </a>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-6 animate-in fade-in duration-500">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                            <div className="space-y-2">
+                                <h2 className="text-xl font-bold">Network Map</h2>
+                                <p className="text-sm text-zinc-400 max-w-xl">
+                                    Explore all of your liked song covers as a 2D network grouped by vibe and artist connections.
+                                </p>
+                                <p className="text-xs text-zinc-500">
+                                    {isFullLibraryLoaded ? `${songs.length} songs mapped.` : "Load your full library to map everything."}
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant="primary"
+                                    isLoading={isPreparingLibrary}
+                                    onClick={handleLoadNetwork}
+                                    disabled={isPreparingLibrary}
+                                >
+                                    {isPreparingLibrary ? "Loading Library..." : "Load Full Library"}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setNetworkSeed(Date.now())}
+                                    disabled={!isFullLibraryLoaded}
+                                >
+                                    Shuffle Layout
+                                </Button>
+                            </div>
+                        </div>
+
+                        {(isPreparingLibrary || isLoading) && (
+                            <p className="text-xs text-zinc-400">
+                                Loading library... {Math.round(progress)}%
+                            </p>
+                        )}
+
+                        <SongNetwork songs={isFullLibraryLoaded ? songs : []} seed={networkSeed} />
                     </div>
                 )}
             </div>

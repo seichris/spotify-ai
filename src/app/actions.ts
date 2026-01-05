@@ -1,6 +1,14 @@
 "use server";
 
-import { fetchSpotify, getLikedSongs, getAudioFeatures, searchSpotify } from "@/lib/spotify";
+import {
+    fetchSpotify,
+    getLikedSongs,
+    getAudioFeatures,
+    searchSpotify,
+    createPlaylist,
+    addTracksToPlaylist,
+    getArtistTopTracks,
+} from "@/lib/spotify";
 import { generateSongSuggestions } from "@/lib/gemini";
 
 export async function getLikedSongsAction(limit: number, offset: number) {
@@ -129,5 +137,99 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
     } catch (error: any) {
         console.error("Error getting Gemini suggestions:", error);
         return { success: false, error: "Failed to get suggestions" };
+    }
+}
+
+export async function getGeminiVibePlanAction(summary: string) {
+    try {
+        const prompt = `You are a music curator. Based on the context below, name a playlist vibe and suggest 10 new songs that fit.
+
+Context:
+${summary}
+
+Output format (exactly):
+VIBE_NAME: <short name>
+VIBE_DESCRIPTION: <one sentence>
+SONGS:
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+$$$Song Name$$$Artist Name$$$
+
+Rules:
+- No numbering or extra text.
+- Use artists and songs that are NOT in the context list.`;
+
+        const text = await generateSongSuggestions(prompt);
+        const vibeNameMatch = text.match(/VIBE_NAME:\s*(.+)/i);
+        const vibeDescriptionMatch = text.match(/VIBE_DESCRIPTION:\s*(.+)/i);
+        const vibeName = vibeNameMatch ? vibeNameMatch[1].trim() : "";
+        const vibeDescription = vibeDescriptionMatch ? vibeDescriptionMatch[1].trim() : "";
+
+        const suggestions = [];
+        const songRegex = /\$\$\$(.*?)\$\$\$(.*?)\$\$\$/g;
+        let match;
+
+        while ((match = songRegex.exec(text)) !== null) {
+            const song = match[1].trim();
+            const artist = match[2].trim();
+            const searchResult = await searchSpotify(`${song} ${artist}`, "track", 1);
+            if (searchResult.tracks && searchResult.tracks.items.length > 0) {
+                suggestions.push(searchResult.tracks.items[0]);
+            }
+        }
+
+        return { success: true, vibeName, vibeDescription, suggestions };
+    } catch (error: any) {
+        console.error("Error getting Gemini vibe plan:", error);
+        return { success: false, error: "Failed to get vibe plan" };
+    }
+}
+
+export async function createPlaylistAction(
+    userId: string,
+    name: string,
+    description: string,
+    isPublic = false
+) {
+    try {
+        const data = await createPlaylist(userId, name, description, isPublic);
+        return { success: true, data };
+    } catch (error: any) {
+        console.error("Error creating playlist:", error);
+        return { success: false, error: "Failed to create playlist" };
+    }
+}
+
+export async function addTracksToPlaylistAction(playlistId: string, uris: string[]) {
+    try {
+        if (!uris.length) {
+            return { success: true, data: [] };
+        }
+        const batches = [];
+        for (let i = 0; i < uris.length; i += 100) {
+            batches.push(addTracksToPlaylist(playlistId, uris.slice(i, i + 100)));
+        }
+        const results = await Promise.all(batches);
+        return { success: true, data: results };
+    } catch (error: any) {
+        console.error("Error adding tracks to playlist:", error);
+        return { success: false, error: "Failed to add tracks to playlist" };
+    }
+}
+
+export async function getArtistTopTracksAction(artistId: string, market: string) {
+    try {
+        const data = await getArtistTopTracks(artistId, market);
+        return { success: true, data };
+    } catch (error: any) {
+        console.error("Error fetching artist top tracks:", error);
+        return { success: false, error: "Failed to fetch artist top tracks" };
     }
 }

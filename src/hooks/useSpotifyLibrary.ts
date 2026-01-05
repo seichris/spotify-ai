@@ -76,18 +76,24 @@ export function useSpotifyLibrary() {
 
         // 3. Merge Genres into Tracks
         const enrichedTracks: EnrichedTrack[] = validTracks.map((track: any) => {
-            const trackGenres = new Set<string>();
+            const genreCounts = new Map<string, number>();
             track.artists.forEach((artist: any) => {
                 const genres = artistMap.get(artist.id);
                 if (genres) {
-                    genres.forEach(g => trackGenres.add(g));
+                    genres.forEach(g => {
+                        genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
+                    });
                 }
             });
+
+            const sortedGenres = Array.from(genreCounts.entries())
+                .sort((a, b) => b[1] - a[1])
+                .map(([genre]) => genre);
 
             return {
                 ...track,
                 features: null,
-                genres: Array.from(trackGenres)
+                genres: sortedGenres
             };
         });
 
@@ -175,5 +181,77 @@ export function useSpotifyLibrary() {
         }
     }, [offset, hasMore, isLoadingMore, songs.length]);
 
-    return { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore };
+    const loadAll = useCallback(async () => {
+        setIsLoading(true);
+        setProgress(0);
+        setSongs([]);
+        setOffset(0);
+        setHasMore(true);
+
+        try {
+            const profileResult = await getUserProfileAction();
+            if (!profileResult.success && profileResult.status === 401) {
+                localStorage.removeItem(LIBRARY_CACHE_KEY);
+                await signOutAction();
+                return [];
+            }
+
+            const cached = localStorage.getItem(LIBRARY_CACHE_KEY);
+            if (cached) {
+                try {
+                    const { songs: cachedSongs, total: cachedTotal, hasMore: cachedHasMore } = JSON.parse(cached);
+                    if (cachedSongs && cachedSongs.length > 0 && cachedHasMore === false) {
+                        setSongs(cachedSongs);
+                        setTotal(cachedTotal);
+                        setOffset(cachedSongs.length);
+                        setHasMore(false);
+                        setIsLoading(false);
+                        setProgress(100);
+                        return cachedSongs as EnrichedTrack[];
+                    }
+                } catch (e) {
+                    console.error("Failed to parse library cache", e);
+                    localStorage.removeItem(LIBRARY_CACHE_KEY);
+                }
+            }
+
+            const allTracks: EnrichedTrack[] = [];
+            let currentOffset = 0;
+            let totalCount = 0;
+
+            while (true) {
+                const result = await fetchTracksAndEnrich(currentOffset, BATCH_SIZE);
+
+                if (!result || result.tracks.length === 0) {
+                    break;
+                }
+
+                if (totalCount === 0) {
+                    totalCount = result.total;
+                    setTotal(result.total);
+                }
+
+                allTracks.push(...result.tracks);
+                setSongs([...allTracks]);
+                currentOffset += BATCH_SIZE;
+                setOffset(currentOffset);
+                setProgress(Math.min(100, Math.round((allTracks.length / totalCount) * 100)));
+
+                if (allTracks.length >= totalCount) {
+                    break;
+                }
+            }
+
+            setHasMore(allTracks.length < totalCount);
+            return allTracks;
+        } catch (error) {
+            console.error("Error loading full library:", error);
+            return [];
+        } finally {
+            setIsLoading(false);
+            setProgress(100);
+        }
+    }, []);
+
+    return { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll };
 }
