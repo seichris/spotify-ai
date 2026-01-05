@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { getLikedSongsAction, getArtistsAction, getUserProfileAction, signOutAction } from "@/app/actions";
+import { getLikedSongsAction, getArtistsAction, getUserProfileAction } from "@/app/actions";
 import { SpotifyTrack } from "@/lib/spotify";
+import { useSpotifyAuth } from "@/hooks/useSpotifyAuth";
 
 interface SpotifySavedTrackItem {
     track: SpotifyTrack | null;
@@ -31,6 +32,7 @@ export interface EnrichedTrack extends SpotifyTrack {
 }
 
 export function useSpotifyLibrary() {
+    const { ensureValidToken, signOut } = useSpotifyAuth();
     const [songs, setSongs] = useState<EnrichedTrack[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -55,14 +57,18 @@ export function useSpotifyLibrary() {
         }
     }, [songs, total, offset, hasMore]);
 
-    const fetchTracksAndEnrich = async (currentOffset: number, currentLimit: number) => {
+    const fetchTracksAndEnrich = useCallback(async (currentOffset: number, currentLimit: number) => {
+        const token = await ensureValidToken();
+        if (!token) {
+            return { tracks: [], total: 0 };
+        }
         // 1. Fetch Liked Songs
-        const result = await getLikedSongsAction(currentLimit, currentOffset) as LikedSongsActionResult;
+        const result = await getLikedSongsAction(currentLimit, currentOffset, token) as LikedSongsActionResult;
 
         if (!result.success || !result.data || !result.data.items || result.data.items.length === 0) {
             if (result.status === 401) {
                 localStorage.removeItem(LIBRARY_CACHE_KEY);
-                await signOutAction();
+                await signOut();
                 return null;
             }
             return { tracks: [], total: 0 };
@@ -86,7 +92,7 @@ export function useSpotifyLibrary() {
 
         for (let i = 0; i < uniqueArtistIds.length; i += BATCH_SIZE) {
             const batch = uniqueArtistIds.slice(i, i + BATCH_SIZE);
-            const artists = await getArtistsAction(batch) as SpotifyArtist[];
+            const artists = await getArtistsAction(batch, token) as SpotifyArtist[];
 
             artists.forEach((artist) => {
                 if (artist?.id) {
@@ -119,7 +125,7 @@ export function useSpotifyLibrary() {
         });
 
         return { tracks: enrichedTracks, total: result.data.total };
-    };
+    }, [ensureValidToken, signOut]);
 
     const fetchLibrary = useCallback(async () => {
         setIsLoading(true);
@@ -130,10 +136,14 @@ export function useSpotifyLibrary() {
 
         try {
             // Verify token first
-            const profileResult = await getUserProfileAction();
+            const token = await ensureValidToken();
+            if (!token) {
+                return;
+            }
+            const profileResult = await getUserProfileAction(token);
             if (!profileResult.success && profileResult.status === 401) {
                 localStorage.removeItem(LIBRARY_CACHE_KEY);
-                await signOutAction();
+                await signOut();
                 return;
             }
 
@@ -176,7 +186,7 @@ export function useSpotifyLibrary() {
             setIsLoading(false);
             setProgress(100);
         }
-    }, []);
+    }, [ensureValidToken, fetchTracksAndEnrich, signOut]);
 
     const loadMore = useCallback(async () => {
         if (isLoadingMore || !hasMore) return;
@@ -200,7 +210,7 @@ export function useSpotifyLibrary() {
         } finally {
             setIsLoadingMore(false);
         }
-    }, [offset, hasMore, isLoadingMore, songs.length]);
+    }, [offset, hasMore, isLoadingMore, songs.length, fetchTracksAndEnrich]);
 
     const loadAll = useCallback(async () => {
         setIsLoading(true);
@@ -210,10 +220,14 @@ export function useSpotifyLibrary() {
         setHasMore(true);
 
         try {
-            const profileResult = await getUserProfileAction();
+            const token = await ensureValidToken();
+            if (!token) {
+                return [];
+            }
+            const profileResult = await getUserProfileAction(token);
             if (!profileResult.success && profileResult.status === 401) {
                 localStorage.removeItem(LIBRARY_CACHE_KEY);
-                await signOutAction();
+                await signOut();
                 return [];
             }
 
@@ -272,7 +286,7 @@ export function useSpotifyLibrary() {
             setIsLoading(false);
             setProgress(100);
         }
-    }, []);
+    }, [ensureValidToken, signOut, fetchTracksAndEnrich]);
 
     return { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll };
 }

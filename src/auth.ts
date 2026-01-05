@@ -1,5 +1,8 @@
 import NextAuth from "next-auth"
 import Spotify from "next-auth/providers/spotify"
+import { SPOTIFY_SCOPE_STRING } from "@/lib/spotifyScopes";
+
+const hasSpotifyCredentials = Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
 
 if (!process.env.SPOTIFY_CLIENT_ID) {
   console.error("❌ Missing SPOTIFY_CLIENT_ID");
@@ -8,15 +11,16 @@ if (!process.env.SPOTIFY_CLIENT_SECRET) {
   console.error("❌ Missing SPOTIFY_CLIENT_SECRET");
 }
 
+const spotifyProvider = hasSpotifyCredentials
+  ? Spotify({
+    clientId: process.env.SPOTIFY_CLIENT_ID,
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    authorization: `https://accounts.spotify.com/authorize?scope=${encodeURIComponent(SPOTIFY_SCOPE_STRING)}`,
+  })
+  : null;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
-    Spotify({
-      clientId: process.env.SPOTIFY_CLIENT_ID,
-      clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-      authorization:
-        "https://accounts.spotify.com/authorize?scope=user-read-email+user-read-private+user-library-read+playlist-modify-private+streaming+user-read-playback-state+user-modify-playback-state",
-    }),
-  ],
+  providers: spotifyProvider ? [spotifyProvider] : [],
   callbacks: {
     async jwt({ token, account }) {
       if (account) {

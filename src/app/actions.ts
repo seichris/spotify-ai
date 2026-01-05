@@ -19,9 +19,9 @@ const getErrorMessage = (error: unknown) => {
     return String(error);
 };
 
-export async function getLikedSongsAction(limit: number, offset: number) {
+export async function getLikedSongsAction(limit: number, offset: number, accessToken?: string) {
     try {
-        const data = await getLikedSongs(limit, offset);
+        const data = await getLikedSongs(limit, offset, accessToken);
         return { success: true, data };
     } catch (error) {
         console.error("Error fetching liked songs:", error);
@@ -31,9 +31,9 @@ export async function getLikedSongsAction(limit: number, offset: number) {
     }
 }
 
-export async function getAudioFeaturesAction(ids: string[]) {
+export async function getAudioFeaturesAction(ids: string[], accessToken?: string) {
     try {
-        const data = await getAudioFeatures(ids);
+        const data = await getAudioFeatures(ids, accessToken);
         return { success: true, data };
     } catch (error) {
         console.error("Error fetching audio features:", error);
@@ -41,9 +41,9 @@ export async function getAudioFeaturesAction(ids: string[]) {
     }
 }
 
-export async function getUserProfileAction() {
+export async function getUserProfileAction(accessToken?: string) {
     try {
-        const data = await fetchSpotify("/me");
+        const data = await fetchSpotify("/me", {}, accessToken);
         return { success: true, data };
     } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -53,9 +53,9 @@ export async function getUserProfileAction() {
     }
 }
 
-export async function getTrackAction(trackId: string) {
+export async function getTrackAction(trackId: string, accessToken?: string) {
     try {
-        const data = await fetchSpotify(`/tracks/${trackId}`);
+        const data = await fetchSpotify(`/tracks/${trackId}`, {}, accessToken);
         return { success: true, data };
     } catch (error) {
         console.error("Error fetching track:", error);
@@ -65,9 +65,9 @@ export async function getTrackAction(trackId: string) {
     }
 }
 
-export async function getSingularAudioFeaturesAction(id: string) {
+export async function getSingularAudioFeaturesAction(id: string, accessToken?: string) {
     try {
-        const data = await fetchSpotify(`/audio-features/${id}`);
+        const data = await fetchSpotify(`/audio-features/${id}`, {}, accessToken);
         return data;
     } catch (error) {
         console.error("Error fetching singular audio features:", error);
@@ -75,14 +75,14 @@ export async function getSingularAudioFeaturesAction(id: string) {
     }
 }
 
-export async function getArtistsAction(ids: string[]) {
+export async function getArtistsAction(ids: string[], accessToken?: string) {
     if (!ids.length) return [];
     try {
         // Spotify allows up to 50 ids per request
         const batches = [];
         for (let i = 0; i < ids.length; i += 50) {
             const batchIds = ids.slice(i, i + 50).join(',');
-            batches.push(fetchSpotify(`/artists?ids=${batchIds}`));
+            batches.push(fetchSpotify(`/artists?ids=${batchIds}`, {}, accessToken));
         }
 
         const results = await Promise.all(batches);
@@ -98,7 +98,11 @@ export async function signOutAction() {
     await signOut();
 }
 
-export async function getGeminiSuggestionsAction(songName: string, artistName: string) {
+export async function getGeminiSuggestionsAction(
+    songName: string,
+    artistName: string,
+    accessToken?: string
+) {
     try {
         const prompt = `Analyze the song "${songName}" by ${artistName}.
         1. Explain why this song is unique (vibe, instruments, history).
@@ -138,7 +142,7 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
             const artist = match[2].trim();
 
             // Search Spotify
-            const searchResult = await searchSpotify(`${song} ${artist}`, 'track', 1);
+            const searchResult = await searchSpotify(`${song} ${artist}`, 'track', 1, accessToken);
             if (searchResult.tracks && searchResult.tracks.items.length > 0) {
                 suggestions.push(searchResult.tracks.items[0]);
             }
@@ -151,7 +155,7 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
     }
 }
 
-export async function getGeminiVibePlanAction(summary: string) {
+export async function getGeminiVibePlanAction(summary: string, accessToken?: string) {
     try {
         const prompt = `You are a music curator. Based on the context below, name a playlist vibe and suggest 10 new songs that fit.
 
@@ -190,7 +194,7 @@ Rules:
         while ((match = songRegex.exec(text)) !== null) {
             const song = match[1].trim();
             const artist = match[2].trim();
-            const searchResult = await searchSpotify(`${song} ${artist}`, "track", 1);
+            const searchResult = await searchSpotify(`${song} ${artist}`, "track", 1, accessToken);
             if (searchResult.tracks && searchResult.tracks.items.length > 0) {
                 suggestions.push(searchResult.tracks.items[0]);
             }
@@ -207,10 +211,11 @@ export async function createPlaylistAction(
     userId: string,
     name: string,
     description: string,
-    isPublic = false
+    isPublic = false,
+    accessToken?: string
 ) {
     try {
-        const data = await createPlaylist(userId, name, description, isPublic);
+        const data = await createPlaylist(userId, name, description, isPublic, accessToken);
         return { success: true, data };
     } catch (error) {
         console.error("Error creating playlist:", error);
@@ -218,14 +223,14 @@ export async function createPlaylistAction(
     }
 }
 
-export async function addTracksToPlaylistAction(playlistId: string, uris: string[]) {
+export async function addTracksToPlaylistAction(playlistId: string, uris: string[], accessToken?: string) {
     try {
         if (!uris.length) {
             return { success: true, data: [] };
         }
         const batches = [];
         for (let i = 0; i < uris.length; i += 100) {
-            batches.push(addTracksToPlaylist(playlistId, uris.slice(i, i + 100)));
+            batches.push(addTracksToPlaylist(playlistId, uris.slice(i, i + 100), accessToken));
         }
         const results = await Promise.all(batches);
         return { success: true, data: results };
@@ -235,17 +240,17 @@ export async function addTracksToPlaylistAction(playlistId: string, uris: string
     }
 }
 
-export async function replacePlaylistTracksAction(playlistId: string, uris: string[]) {
+export async function replacePlaylistTracksAction(playlistId: string, uris: string[], accessToken?: string) {
     try {
         if (uris.length <= 100) {
-            const data = await replacePlaylistTracks(playlistId, uris);
+            const data = await replacePlaylistTracks(playlistId, uris, accessToken);
             return { success: true, data };
         }
 
         const firstBatch = uris.slice(0, 100);
         const remaining = uris.slice(100);
-        const replaceResult = await replacePlaylistTracks(playlistId, firstBatch);
-        const addResult = await addTracksToPlaylistAction(playlistId, remaining);
+        const replaceResult = await replacePlaylistTracks(playlistId, firstBatch, accessToken);
+        const addResult = await addTracksToPlaylistAction(playlistId, remaining, accessToken);
 
         if (!addResult.success) {
             return { success: false, error: "Failed to add remaining tracks" };
@@ -258,9 +263,9 @@ export async function replacePlaylistTracksAction(playlistId: string, uris: stri
     }
 }
 
-export async function getArtistTopTracksAction(artistId: string, market: string) {
+export async function getArtistTopTracksAction(artistId: string, market: string, accessToken?: string) {
     try {
-        const data = await getArtistTopTracks(artistId, market);
+        const data = await getArtistTopTracks(artistId, market, accessToken);
         return { success: true, data };
     } catch (error) {
         console.error("Error fetching artist top tracks:", error);

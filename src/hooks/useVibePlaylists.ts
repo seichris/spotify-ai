@@ -10,6 +10,7 @@ import {
     getUserProfileAction,
     replacePlaylistTracksAction,
 } from "@/app/actions";
+import { useSpotifyAuth } from "@/hooks/useSpotifyAuth";
 
 const STATE_KEY = "vibe_playlist_state_v1";
 const MAX_VIBES = 6;
@@ -279,6 +280,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export function useVibePlaylists() {
+    const { ensureValidToken } = useSpotifyAuth();
     const [isBuilding, setIsBuilding] = useState(false);
     const [steps, setSteps] = useState<string[]>([]);
     const [results, setResults] = useState<PlaylistBuildResult[]>([]);
@@ -341,7 +343,13 @@ export function useVibePlaylists() {
                 return;
             }
 
-            const profileResult = await getUserProfileAction();
+            const token = await ensureValidToken();
+            if (!token) {
+                setError("Missing Spotify access token. Connect and try again.");
+                return;
+            }
+
+            const profileResult = await getUserProfileAction(token);
             if (!profileResult.success || !profileResult.data) {
                 setError("Failed to load Spotify profile.");
                 return;
@@ -394,7 +402,7 @@ export function useVibePlaylists() {
 
                 logStep(`Updating ${vibe.name} with ${urisToAdd.length} liked songs.`);
 
-                const addResult = await addTracksToPlaylistAction(vibe.playlistId, urisToAdd);
+                const addResult = await addTracksToPlaylistAction(vibe.playlistId, urisToAdd, token);
                 if (!addResult.success) {
                     logStep(`Failed to update ${vibe.name}.`);
                     continue;
@@ -443,7 +451,7 @@ export function useVibePlaylists() {
                 };
 
                 const summary = createSummary(activeCluster);
-                const geminiResult = await getGeminiVibePlanAction(summary.summaryText);
+                const geminiResult = await getGeminiVibePlanAction(summary.summaryText, token);
 
                 const rawVibeName = geminiResult.success && geminiResult.vibeName
                     ? geminiResult.vibeName
@@ -459,7 +467,13 @@ export function useVibePlaylists() {
                 const playlistName = `Gemini Vibe - ${safeVibeName}`.slice(0, 100);
                 logStep(`Creating playlist "${playlistName}".`);
 
-                const playlistResult = await createPlaylistAction(userId, playlistName, vibeDescription, false);
+                const playlistResult = await createPlaylistAction(
+                    userId,
+                    playlistName,
+                    vibeDescription,
+                    false,
+                    token
+                );
                 if (!playlistResult.success || !playlistResult.data) {
                     logStep(`Failed to create playlist for ${vibeName}.`);
                     continue;
@@ -490,7 +504,7 @@ export function useVibePlaylists() {
 
                 if (suggestedTracks.length < NEW_SONGS_PER_VIBE && summary.topArtistIds.length > 0) {
                     for (const artistId of summary.topArtistIds) {
-                        const topTracksResult = await getArtistTopTracksAction(artistId, market);
+                        const topTracksResult = await getArtistTopTracksAction(artistId, market, token);
                         if (!topTracksResult.success || !topTracksResult.data) continue;
                         const topTracks = (topTracksResult.data.tracks || []) as SpotifyApiTrack[];
                         topTracks.forEach(track => {
@@ -515,7 +529,7 @@ export function useVibePlaylists() {
                 const allUris = Array.from(new Set([...likedUris, ...newUris]));
                 logStep(`Adding ${likedUris.length} liked + ${newTracks.length} new songs to ${playlistName}.`);
 
-                const addResult = await addTracksToPlaylistAction(playlistId, allUris);
+                const addResult = await addTracksToPlaylistAction(playlistId, allUris, token);
                 if (!addResult.success) {
                     logStep(`Failed to add tracks to ${playlistName}.`);
                     continue;
@@ -570,7 +584,7 @@ export function useVibePlaylists() {
         } finally {
             setIsBuilding(false);
         }
-    }, []);
+    }, [ensureValidToken]);
 
     const buildLibraryPlaylist = useCallback(async (songs: EnrichedTrack[]) => {
         setIsBuildingLibrary(true);
@@ -640,7 +654,13 @@ export function useVibePlaylists() {
                 return;
             }
 
-            const profileResult = await getUserProfileAction();
+            const token = await ensureValidToken();
+            if (!token) {
+                setError("Missing Spotify access token. Connect and try again.");
+                return;
+            }
+
+            const profileResult = await getUserProfileAction(token);
             if (!profileResult.success || !profileResult.data) {
                 setError("Failed to load Spotify profile.");
                 return;
@@ -656,7 +676,7 @@ export function useVibePlaylists() {
 
             if (!playlistId) {
                 logStep(`Creating library playlist \"${playlistName}\".`);
-                const createResult = await createPlaylistAction(userId, playlistName, description, false);
+                const createResult = await createPlaylistAction(userId, playlistName, description, false, token);
                 if (!createResult.success || !createResult.data) {
                     setError("Failed to create the library playlist.");
                     return;
@@ -668,7 +688,7 @@ export function useVibePlaylists() {
             }
 
             const orderedUris = orderedTracks.map(track => track.uri);
-            const replaceResult = await replacePlaylistTracksAction(playlistId, orderedUris);
+            const replaceResult = await replacePlaylistTracksAction(playlistId, orderedUris, token);
             if (!replaceResult.success) {
                 setError("Failed to update the library playlist.");
                 return;
@@ -696,7 +716,7 @@ export function useVibePlaylists() {
         } finally {
             setIsBuildingLibrary(false);
         }
-    }, []);
+    }, [ensureValidToken]);
 
     return {
         isBuilding,
