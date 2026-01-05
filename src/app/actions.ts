@@ -12,13 +12,21 @@ import {
 } from "@/lib/spotify";
 import { generateSongSuggestions } from "@/lib/gemini";
 
+const getErrorMessage = (error: unknown) => {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    return String(error);
+};
+
 export async function getLikedSongsAction(limit: number, offset: number) {
     try {
         const data = await getLikedSongs(limit, offset);
         return { success: true, data };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error fetching liked songs:", error);
-        const status = error.message.includes("401") || error.message.toLowerCase().includes("expired") ? 401 : 500;
+        const message = getErrorMessage(error);
+        const status = message.includes("401") || message.toLowerCase().includes("expired") ? 401 : 500;
         return { success: false, error: "Failed to fetch songs", status };
     }
 }
@@ -37,9 +45,10 @@ export async function getUserProfileAction() {
     try {
         const data = await fetchSpotify("/me");
         return { success: true, data };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error fetching user profile:", error);
-        const status = error.message.includes("401") || error.message.toLowerCase().includes("expired") ? 401 : 500;
+        const message = getErrorMessage(error);
+        const status = message.includes("401") || message.toLowerCase().includes("expired") ? 401 : 500;
         return { success: false, error: "Failed to fetch user profile", status };
     }
 }
@@ -48,9 +57,10 @@ export async function getTrackAction(trackId: string) {
     try {
         const data = await fetchSpotify(`/tracks/${trackId}`);
         return { success: true, data };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error fetching track:", error);
-        const status = error.message.includes("401") || error.message.toLowerCase().includes("expired") ? 401 : 500;
+        const message = getErrorMessage(error);
+        const status = message.includes("401") || message.toLowerCase().includes("expired") ? 401 : 500;
         return { success: false, error: "Failed to fetch track", status };
     }
 }
@@ -135,7 +145,7 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
         }
 
         return { success: true, text: visibleText, suggestions };
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error getting Gemini suggestions:", error);
         return { success: false, error: "Failed to get suggestions" };
     }

@@ -8,14 +8,20 @@ import SongNetwork from "@/components/SongNetwork";
 import { Loader2, Play, SkipBack, Pause, SkipForward, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
+import { SpotifyTrack } from "@/lib/spotify";
 import { signOutAction, getGeminiSuggestionsAction } from "@/app/actions";
+
+type GeminiCacheEntry = {
+    text?: string;
+    suggestions?: SpotifyTrack[];
+};
 
 export default function Dashboard() {
     const { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll } = useSpotifyLibrary();
     const { isActive, isPaused, playTrack, togglePlay, nextTrack, previousTrack } = usePlayer();
     const [selectedSong, setSelectedSong] = useState<EnrichedTrack | null>(null);
     const [viewMode, setViewMode] = useState<"recommends" | "sort" | "network">("recommends");
-    const observerTarget = useRef(null);
+    const observerTarget = useRef<HTMLDivElement | null>(null);
     const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
     const [networkSeed, setNetworkSeed] = useState(0);
 
@@ -33,10 +39,8 @@ export default function Dashboard() {
 
     const isFullLibraryLoaded = total > 0 && songs.length >= total && !hasMore;
 
-    const [geminiSuggestions, setGeminiSuggestions] = useState<any[]>([]);
-    const [geminiText, setGeminiText] = useState<string>("");
     const [isGeminiLoading, setIsGeminiLoading] = useState(false);
-    const [cachedSuggestionsMap, setCachedSuggestionsMap] = useState<Record<string, any[]>>({});
+    const [cachedSuggestionsMap, setCachedSuggestionsMap] = useState<Record<string, SpotifyTrack[]>>({});
 
     useEffect(() => {
         fetchLibrary();
@@ -45,17 +49,17 @@ export default function Dashboard() {
     // Load cached suggestions for visible songs
     useEffect(() => {
         if (songs.length > 0) {
-            const newCacheMap: Record<string, any[]> = {};
+            const newCacheMap: Record<string, SpotifyTrack[]> = {};
             songs.forEach(song => {
                 const cacheKey = `gemini_cache_${song.id}`;
                 const cachedData = localStorage.getItem(cacheKey);
                 if (cachedData) {
                     try {
-                        const parsed = JSON.parse(cachedData);
-                        if (parsed.suggestions && parsed.suggestions.length > 0) {
+                        const parsed = JSON.parse(cachedData) as GeminiCacheEntry;
+                        if (Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
                             newCacheMap[song.id] = parsed.suggestions;
                         }
-                    } catch (e) {
+                    } catch {
                         // Ignore parse errors
                     }
                 }
@@ -74,13 +78,14 @@ export default function Dashboard() {
             { threshold: 0.1 }
         );
 
-        if (observerTarget.current) {
-            observer.observe(observerTarget.current);
+        const currentTarget = observerTarget.current;
+        if (currentTarget) {
+            observer.observe(currentTarget);
         }
 
         return () => {
-            if (observerTarget.current) {
-                observer.unobserve(observerTarget.current);
+            if (currentTarget) {
+                observer.unobserve(currentTarget);
             }
         };
     }, [hasMore, isLoadingMore, loadMore]);
@@ -94,8 +99,6 @@ export default function Dashboard() {
 
         setSelectedSong(song);
         setIsGeminiLoading(true);
-        setGeminiSuggestions([]);
-        setGeminiText("");
 
         // Check LocalStorage first
         const cacheKey = `gemini_cache_${song.id}`;
@@ -103,34 +106,37 @@ export default function Dashboard() {
 
         if (cachedData) {
             try {
-                const { text, suggestions } = JSON.parse(cachedData);
-                setGeminiText(text);
-                setGeminiSuggestions(suggestions);
+                const parsed = JSON.parse(cachedData) as GeminiCacheEntry;
+                if (Array.isArray(parsed.suggestions)) {
+                    setCachedSuggestionsMap(prev => ({
+                        ...prev,
+                        [song.id]: parsed.suggestions ?? []
+                    }));
+                }
                 setIsGeminiLoading(false);
                 return;
-            } catch (e) {
-                console.error("Failed to parse cached data", e);
+            } catch (error) {
+                console.error("Failed to parse cached data", error);
                 localStorage.removeItem(cacheKey);
             }
         }
 
         const result = await getGeminiSuggestionsAction(song.name, song.artists[0].name);
 
-        if (result.success && result.suggestions) {
-            setGeminiText(result.text || "");
-            setGeminiSuggestions(result.suggestions);
+        if (result.success && Array.isArray(result.suggestions)) {
+            const suggestions = result.suggestions as SpotifyTrack[];
 
             // Save to LocalStorage
             localStorage.setItem(cacheKey, JSON.stringify({
                 text: result.text,
-                suggestions: result.suggestions,
+                suggestions,
                 timestamp: Date.now()
             }));
 
             // Update cache map
             setCachedSuggestionsMap(prev => ({
                 ...prev,
-                [song.id]: result.suggestions
+                [song.id]: suggestions
             }));
         }
 
@@ -270,28 +276,28 @@ export default function Dashboard() {
                                             <div className="flex flex-col gap-2 w-full">
                                                 {/* Suggested Songs - Horizontal Scroll */}
                                                 <div className="flex gap-3 items-center overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-2">
-                                                    {cachedSuggestionsMap[song.id].map((suggestion: any) => (
-                                                        <div
-                                                            key={suggestion.id}
-                                                            className="flex flex-col justify-center min-w-[140px] h-20 p-2 bg-zinc-900/80 rounded-md cursor-pointer hover:bg-zinc-800 transition-all group relative shrink-0"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                playTrack(suggestion.uri);
-                                                            }}
-                                                        >
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                {suggestion.album.images[2] && (
-                                                                    <img src={suggestion.album.images[2].url} alt={suggestion.name} className="w-8 h-8 rounded shadow-sm" />
-                                                                )}
-                                                                <div className="overflow-hidden">
-                                                                    <p className="text-xs font-medium text-zinc-300 group-hover:text-white truncate">
-                                                                        {suggestion.name}
-                                                                    </p>
-                                                                    <p className="text-[10px] text-zinc-500 truncate">
-                                                                        {suggestion.artists.map((a: any) => a.name).join(", ")}
-                                                                    </p>
-                                                                </div>
+                                                {cachedSuggestionsMap[song.id].map((suggestion: SpotifyTrack) => (
+                                                    <div
+                                                        key={suggestion.id}
+                                                        className="flex flex-col justify-center min-w-[140px] h-20 p-2 bg-zinc-900/80 rounded-md cursor-pointer hover:bg-zinc-800 transition-all group relative shrink-0"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playTrack(suggestion.uri);
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            {suggestion.album.images[2] && (
+                                                                <img src={suggestion.album.images[2].url} alt={suggestion.name} className="w-8 h-8 rounded shadow-sm" />
+                                                            )}
+                                                            <div className="overflow-hidden">
+                                                                <p className="text-xs font-medium text-zinc-300 group-hover:text-white truncate">
+                                                                    {suggestion.name}
+                                                                </p>
+                                                                <p className="text-[10px] text-zinc-500 truncate">
+                                                                    {suggestion.artists.map((artist) => artist.name).join(", ")}
+                                                                </p>
                                                             </div>
+                                                        </div>
                                                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-md">
                                                                 <Play className="w-6 h-6 fill-white text-white drop-shadow-md" />
                                                             </div>
@@ -306,8 +312,9 @@ export default function Dashboard() {
                                                     let text = "";
                                                     if (cachedData) {
                                                         try {
-                                                            text = JSON.parse(cachedData).text;
-                                                        } catch (e) { }
+                                                            const parsed = JSON.parse(cachedData) as GeminiCacheEntry;
+                                                            text = parsed.text ?? "";
+                                                        } catch { }
                                                     }
                                                     return text ? (
                                                         <div className="w-full p-2 bg-zinc-900/40 rounded-md text-[10px] text-zinc-400 leading-tight whitespace-pre-wrap animate-in fade-in slide-in-from-top-1 duration-300">

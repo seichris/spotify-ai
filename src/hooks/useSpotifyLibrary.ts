@@ -4,6 +4,27 @@ import { useState, useCallback, useEffect } from "react";
 import { getLikedSongsAction, getArtistsAction, getUserProfileAction, signOutAction } from "@/app/actions";
 import { SpotifyTrack } from "@/lib/spotify";
 
+interface SpotifySavedTrackItem {
+    track: SpotifyTrack | null;
+    added_at: string;
+}
+
+interface SpotifySavedTracksResponse {
+    items: SpotifySavedTrackItem[];
+    total: number;
+}
+
+interface SpotifyArtist {
+    id: string;
+    genres?: string[];
+}
+
+interface LikedSongsActionResult {
+    success: boolean;
+    data?: SpotifySavedTracksResponse;
+    status?: number;
+}
+
 export interface EnrichedTrack extends SpotifyTrack {
     features: null; // Deprecated/Restricted
     genres: string[];
@@ -36,7 +57,7 @@ export function useSpotifyLibrary() {
 
     const fetchTracksAndEnrich = async (currentOffset: number, currentLimit: number) => {
         // 1. Fetch Liked Songs
-        const result = await getLikedSongsAction(currentLimit, currentOffset);
+        const result = await getLikedSongsAction(currentLimit, currentOffset) as LikedSongsActionResult;
 
         if (!result.success || !result.data || !result.data.items || result.data.items.length === 0) {
             if (result.status === 401) {
@@ -47,17 +68,17 @@ export function useSpotifyLibrary() {
             return { tracks: [], total: 0 };
         }
 
-        const newTracks = result.data.items.map((item: any) => ({
-            ...item.track,
-            added_at: item.added_at
-        }));
+        type TrackWithAddedAt = SpotifyTrack & { added_at: string };
+        const newTracks = result.data.items
+            .map((item) => (item.track ? { ...item.track, added_at: item.added_at } : null))
+            .filter((track): track is TrackWithAddedAt => Boolean(track));
 
-        const validTracks = newTracks.filter((t: any) => t.id && t.type === 'track' && !t.is_local);
+        const validTracks = newTracks.filter((track) => track.id && track.type === "track" && !track.is_local);
 
         // 2. Fetch Artists to get Genres (Batching)
         const artistIds = new Set<string>();
-        validTracks.forEach((track: any) => {
-            track.artists.forEach((artist: any) => artistIds.add(artist.id));
+        validTracks.forEach((track) => {
+            track.artists.forEach((artist) => artistIds.add(artist.id));
         });
 
         const uniqueArtistIds = Array.from(artistIds);
@@ -65,19 +86,19 @@ export function useSpotifyLibrary() {
 
         for (let i = 0; i < uniqueArtistIds.length; i += BATCH_SIZE) {
             const batch = uniqueArtistIds.slice(i, i + BATCH_SIZE);
-            const artists = await getArtistsAction(batch);
+            const artists = await getArtistsAction(batch) as SpotifyArtist[];
 
-            artists.forEach((artist: any) => {
-                if (artist) {
-                    artistMap.set(artist.id, artist.genres || []);
+            artists.forEach((artist) => {
+                if (artist?.id) {
+                    artistMap.set(artist.id, artist.genres ?? []);
                 }
             });
         }
 
         // 3. Merge Genres into Tracks
-        const enrichedTracks: EnrichedTrack[] = validTracks.map((track: any) => {
+        const enrichedTracks: EnrichedTrack[] = validTracks.map((track) => {
             const genreCounts = new Map<string, number>();
-            track.artists.forEach((artist: any) => {
+            track.artists.forEach((artist) => {
                 const genres = artistMap.get(artist.id);
                 if (genres) {
                     genres.forEach(g => {

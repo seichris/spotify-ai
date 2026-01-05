@@ -1,19 +1,71 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+
+export interface SpotifyImage {
+    url: string;
+    height?: number;
+    width?: number;
+}
+
+export interface SpotifyArtist {
+    id?: string;
+    name: string;
+    uri?: string;
+}
+
+export interface SpotifyAlbum {
+    images: SpotifyImage[];
+    name?: string;
+    uri?: string;
+}
+
+export interface SpotifyTrackInfo {
+    id: string;
+    uri: string;
+    name: string;
+    artists: SpotifyArtist[];
+    album: SpotifyAlbum;
+}
+
+export interface SpotifyPlaybackState {
+    paused: boolean;
+    track_window: {
+        current_track: SpotifyTrackInfo;
+    };
+}
+
+export interface SpotifyWebPlaybackPlayer {
+    connect: () => Promise<boolean>;
+    disconnect: () => void;
+    addListener: (event: string, callback: (payload: unknown) => void) => boolean;
+    getCurrentState: () => Promise<SpotifyPlaybackState | null>;
+    togglePlay: () => Promise<void>;
+    nextTrack: () => Promise<void>;
+    previousTrack: () => Promise<void>;
+}
+
+interface SpotifyWebPlaybackSDK {
+    Player: new (options: {
+        name: string;
+        getOAuthToken: (cb: (token: string) => void) => void;
+        volume?: number;
+    }) => SpotifyWebPlaybackPlayer;
+}
 
 declare global {
     interface Window {
         onSpotifyWebPlaybackSDKReady: () => void;
-        Spotify: any;
+        Spotify: SpotifyWebPlaybackSDK;
     }
 }
 
 export function useSpotifyPlayer(token: string) {
-    const [player, setPlayer] = useState<any>(null);
+    const playerRef = useRef<SpotifyWebPlaybackPlayer | null>(null);
+    const [player, setPlayer] = useState<SpotifyWebPlaybackPlayer | null>(null);
     const [isPaused, setIsPaused] = useState(true);
     const [isActive, setIsActive] = useState(false);
-    const [currentTrack, setCurrentTrack] = useState<any>(null);
+    const [currentTrack, setCurrentTrack] = useState<SpotifyTrackInfo | null>(null);
     const [deviceId, setDeviceId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -26,44 +78,53 @@ export function useSpotifyPlayer(token: string) {
         document.body.appendChild(script);
 
         window.onSpotifyWebPlaybackSDKReady = () => {
-            const player = new window.Spotify.Player({
-                name: 'Gemini Spotify Analyzer',
-                getOAuthToken: (cb: any) => { cb(token); },
+            const sdkPlayer = new window.Spotify.Player({
+                name: "Gemini Spotify Analyzer",
+                getOAuthToken: (cb) => { cb(token); },
                 volume: 0.5
             });
 
-            player.addListener('ready', ({ device_id }: any) => {
-                console.log('Ready with Device ID', device_id);
+            sdkPlayer.addListener("ready", (payload) => {
+                const { device_id } = payload as { device_id: string };
+                console.log("Ready with Device ID", device_id);
                 setDeviceId(device_id);
             });
 
-            player.addListener('not_ready', ({ device_id }: any) => {
-                console.log('Device ID has gone offline', device_id);
+            sdkPlayer.addListener("not_ready", (payload) => {
+                const { device_id } = payload as { device_id: string };
+                console.log("Device ID has gone offline", device_id);
             });
 
-            player.addListener('initialization_error', ({ message }: any) => {
-                console.error('Failed to initialize', message);
+            sdkPlayer.addListener("initialization_error", (payload) => {
+                const { message } = payload as { message: string };
+                console.error("Failed to initialize", message);
             });
 
-            player.addListener('authentication_error', ({ message }: any) => {
-                console.error('Failed to authenticate', message);
+            sdkPlayer.addListener("authentication_error", (payload) => {
+                const { message } = payload as { message: string };
+                console.error("Failed to authenticate", message);
             });
 
-            player.addListener('player_state_changed', (state: any) => {
+            sdkPlayer.addListener("player_state_changed", (payload) => {
+                const state = payload as SpotifyPlaybackState | null;
                 if (!state) return;
                 setCurrentTrack(state.track_window.current_track);
                 setIsPaused(state.paused);
-                player.getCurrentState().then((state: any) => {
-                    setIsActive(!!state);
+                sdkPlayer.getCurrentState().then((currentState) => {
+                    setIsActive(!!currentState);
                 });
             });
 
-            player.connect();
-            setPlayer(player);
+            sdkPlayer.connect();
+            playerRef.current = sdkPlayer;
+            setPlayer(sdkPlayer);
         };
 
         return () => {
-            if (player) player.disconnect();
+            if (playerRef.current) {
+                playerRef.current.disconnect();
+                playerRef.current = null;
+            }
         };
     }, [token]);
 
