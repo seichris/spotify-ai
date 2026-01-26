@@ -10,6 +10,7 @@ import {
     getUserProfileAction,
     replacePlaylistTracksAction,
 } from "@/app/actions";
+import { estimateGeminiCost } from "@/lib/geminiPricing";
 
 const STATE_KEY = "vibe_playlist_state_v1";
 const parseEnvInt = (value: string | undefined, fallback: number) => {
@@ -332,6 +333,29 @@ export function useVibePlaylists() {
                 state.songToVibes = songToVibes;
             };
             const hasVibes = Object.keys(state.vibes).length > 0;
+            const geminiUsageByModel = new Map<
+                string,
+                {
+                    promptTokenCount: number;
+                    candidatesTokenCount: number;
+                    totalTokenCount: number;
+                    cachedContentTokenCount: number;
+                    requests: number;
+                }
+            >();
+            const ensureUsage = (modelName: string) => {
+                const existing = geminiUsageByModel.get(modelName);
+                if (existing) return existing;
+                const nextUsage = {
+                    promptTokenCount: 0,
+                    candidatesTokenCount: 0,
+                    totalTokenCount: 0,
+                    cachedContentTokenCount: 0,
+                    requests: 0,
+                };
+                geminiUsageByModel.set(modelName, nextUsage);
+                return nextUsage;
+            };
 
             const newLikedSongs = hasVibes
                 ? likedSongs.filter(track => !analyzedSet.has(track.id))
@@ -448,6 +472,17 @@ export function useVibePlaylists() {
 
                 const summary = createSummary(activeCluster);
                 const geminiResult = await getGeminiVibePlanAction(summary.summaryText);
+                const modelName = geminiResult?.model || "unknown";
+                const usage = ensureUsage(modelName);
+                usage.requests += 1;
+                if (geminiResult?.usageMetadata) {
+                    usage.promptTokenCount += geminiResult.usageMetadata.promptTokenCount || 0;
+                    usage.candidatesTokenCount += geminiResult.usageMetadata.candidatesTokenCount || 0;
+                    usage.totalTokenCount += geminiResult.usageMetadata.totalTokenCount || 0;
+                    if (typeof geminiResult.usageMetadata.cachedContentTokenCount === "number") {
+                        usage.cachedContentTokenCount += geminiResult.usageMetadata.cachedContentTokenCount;
+                    }
+                }
 
                 const rawVibeName = geminiResult.success && geminiResult.vibeName
                     ? geminiResult.vibeName
@@ -566,6 +601,40 @@ export function useVibePlaylists() {
             syncStateSets();
             state.lastRunAt = Date.now();
             saveState(state);
+
+            if (geminiUsageByModel.size > 0) {
+                let totalPrompt = 0;
+                let totalCandidates = 0;
+                let totalTokens = 0;
+                let totalCost = 0;
+                let hasCost = false;
+                geminiUsageByModel.forEach((usage, modelName) => {
+                    totalPrompt += usage.promptTokenCount;
+                    totalCandidates += usage.candidatesTokenCount;
+                    totalTokens += usage.totalTokenCount;
+                    const cached = usage.cachedContentTokenCount;
+                    const cachedText = cached > 0 ? `, cached=${cached}` : "";
+                    const estimate = estimateGeminiCost(
+                        modelName,
+                        usage.promptTokenCount,
+                        usage.candidatesTokenCount
+                    );
+                    if (estimate) {
+                        totalCost += estimate.totalCost;
+                        hasCost = true;
+                    }
+                    const costText = estimate ? `, cost=$${estimate.totalCost.toFixed(6)}` : "";
+                    console.log(
+                        `[Gemini] Build Vibe Playlists (${modelName}): ${usage.requests} request(s), prompt=${usage.promptTokenCount}, candidates=${usage.candidatesTokenCount}, total=${usage.totalTokenCount}${cachedText}${costText}`
+                    );
+                });
+                if (geminiUsageByModel.size > 1) {
+                    const totalCostText = hasCost ? `, cost=$${totalCost.toFixed(6)}` : "";
+                    console.log(
+                        `[Gemini] Build Vibe Playlists (all models): prompt=${totalPrompt}, candidates=${totalCandidates}, total=${totalTokens}${totalCostText}`
+                    );
+                }
+            }
 
             setResults(buildResults);
         } catch (err) {

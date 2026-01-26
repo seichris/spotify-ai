@@ -111,7 +111,7 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
         
         Do not include any numbering or extra text in the machine-readable section. Just the $$$ separators.`;
 
-        const text = await generateSongSuggestions(prompt);
+        const { text, usageMetadata, model } = await generateSongSuggestions(prompt);
         console.log("Gemini Output:", text);
 
         // Parse the text output
@@ -144,7 +144,7 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
             }
         }
 
-        return { success: true, text: visibleText, suggestions };
+        return { success: true, text: visibleText, suggestions, usageMetadata, model };
     } catch (error) {
         console.error("Error getting Gemini suggestions:", error);
         return { success: false, error: "Failed to get suggestions" };
@@ -177,7 +177,7 @@ Rules:
 - No numbering or extra text.
 - Use artists and songs that are NOT in the context list.`;
 
-        const text = await generateSongSuggestions(prompt);
+        const { text, usageMetadata, model } = await generateSongSuggestions(prompt);
         const vibeNameMatch = text.match(/VIBE_NAME:\s*(.+)/i);
         const vibeDescriptionMatch = text.match(/VIBE_DESCRIPTION:\s*(.+)/i);
         const vibeName = vibeNameMatch ? vibeNameMatch[1].trim() : "";
@@ -196,7 +196,7 @@ Rules:
             }
         }
 
-        return { success: true, vibeName, vibeDescription, suggestions };
+        return { success: true, vibeName, vibeDescription, suggestions, usageMetadata, model };
     } catch (error) {
         console.error("Error getting Gemini vibe plan:", error);
         return { success: false, error: "Failed to get vibe plan" };

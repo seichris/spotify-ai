@@ -8,11 +8,12 @@ export async function generateSongSuggestions(prompt: string) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+    const modelName = process.env.SPOTIFY_GEMINI_MODEL || "gemini-3.0-flash";
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
 
-    return text;
+    return { text, usageMetadata: response.usageMetadata, model: modelName };
 }
