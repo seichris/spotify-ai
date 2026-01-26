@@ -20,20 +20,17 @@ export default function Dashboard() {
     const { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll } = useSpotifyLibrary();
     const { isActive, isPaused, playTrack, togglePlay, nextTrack, previousTrack } = usePlayer();
     const [selectedSong, setSelectedSong] = useState<EnrichedTrack | null>(null);
-    const [viewMode, setViewMode] = useState<"recommends" | "sort" | "network">("recommends");
+    const [viewMode, setViewMode] = useState<"recommends" | "sort" | "network">("network");
     const observerTarget = useRef<HTMLDivElement | null>(null);
     const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
     const [networkSeed, setNetworkSeed] = useState(0);
 
     const {
         isBuilding,
-        isBuildingLibrary,
         steps,
         results,
-        libraryResult,
         error,
         buildVibePlaylists,
-        buildLibraryPlaylist,
         resetState,
     } = useVibePlaylists();
 
@@ -144,7 +141,7 @@ export default function Dashboard() {
     };
 
     const handleBuildVibes = async () => {
-        if (isBuilding || isBuildingLibrary || isPreparingLibrary) return;
+        if (isBuilding || isPreparingLibrary) return;
         setIsPreparingLibrary(true);
         let allSongs: EnrichedTrack[] = [];
         try {
@@ -154,19 +151,6 @@ export default function Dashboard() {
         }
         const library = allSongs.length > 0 ? allSongs : songs;
         await buildVibePlaylists(library);
-    };
-
-    const handleBuildLibraryPlaylist = async () => {
-        if (isBuilding || isBuildingLibrary || isPreparingLibrary) return;
-        setIsPreparingLibrary(true);
-        let allSongs: EnrichedTrack[] = [];
-        try {
-            allSongs = await loadAll();
-        } finally {
-            setIsPreparingLibrary(false);
-        }
-        const library = allSongs.length > 0 ? allSongs : songs;
-        await buildLibraryPlaylist(library);
     };
 
     const handleLoadNetwork = async () => {
@@ -197,17 +181,18 @@ export default function Dashboard() {
         <div className="min-h-screen bg-zinc-950 text-white p-8 pb-32 relative">
             {/* Floating Header Navigation */}
             <div className="fixed top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50 backdrop-blur-md p-1.5 rounded-full shadow-xl">
-                <button
+                {/* <button
                     onClick={() => setViewMode('recommends')}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'recommends' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'}`}
                 >
                     Recommends
-                </button>
+                </button> */}
                 <button
                     onClick={() => setViewMode('sort')}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'sort' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'}`}
+                    disabled={!isFullLibraryLoaded}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'sort' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'} ${!isFullLibraryLoaded ? 'opacity-50 cursor-not-allowed hover:text-zinc-400 hover:bg-transparent' : ''}`}
                 >
-                    Sort Liked Songs
+                    Vibe Playlists
                 </button>
                 <button
                     onClick={() => setViewMode("network")}
@@ -380,22 +365,20 @@ export default function Dashboard() {
                                 variant="primary"
                                 isLoading={isPreparingLibrary || isBuilding}
                                 onClick={handleBuildVibes}
-                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
+                                disabled={isPreparingLibrary || isBuilding}
                             >
                                 {isPreparingLibrary ? "Loading Library..." : "Build Vibe Playlists"}
                             </Button>
-                            <Button
+                            {/* <Button
                                 variant="secondary"
-                                isLoading={isBuildingLibrary}
                                 onClick={handleBuildLibraryPlaylist}
-                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
                             >
-                                {isBuildingLibrary ? "Building Library..." : "Build Library Playlist"}
-                            </Button>
+                                Build Library Playlist
+                            </Button> */}
                             <Button
                                 variant="outline"
                                 onClick={resetState}
-                                disabled={isPreparingLibrary || isBuilding || isBuildingLibrary}
+                                disabled={isPreparingLibrary || isBuilding}
                             >
                                 Reset Vibe Cache
                             </Button>
@@ -451,7 +434,7 @@ export default function Dashboard() {
                             </div>
                         )}
 
-                        {libraryResult && (
+                        {/* {libraryResult && (
                             <div className="w-full max-w-xl space-y-2">
                                 <h3 className="text-sm font-semibold text-zinc-200">Library Playlist</h3>
                                 <div className="flex items-center justify-between gap-4 bg-zinc-900/40 rounded-md p-3">
@@ -473,7 +456,7 @@ export default function Dashboard() {
                                     )}
                                 </div>
                             </div>
-                        )}
+                        )} */}
                     </div>
                 ) : (
                     <div className="space-y-6 animate-in fade-in duration-500">
