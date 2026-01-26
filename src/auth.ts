@@ -7,8 +7,12 @@ if (!process.env.SPOTIFY_CLIENT_ID) {
 if (!process.env.SPOTIFY_CLIENT_SECRET) {
   console.error("❌ Missing SPOTIFY_CLIENT_SECRET");
 }
+if (!process.env.SPOTIFY_AUTH_SECRET) {
+  console.error("❌ Missing SPOTIFY_AUTH_SECRET");
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: process.env.SPOTIFY_AUTH_SECRET,
   providers: [
     Spotify({
       clientId: process.env.SPOTIFY_CLIENT_ID,

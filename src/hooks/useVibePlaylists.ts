@@ -12,9 +12,13 @@ import {
 } from "@/app/actions";
 
 const STATE_KEY = "vibe_playlist_state_v1";
-const MAX_VIBES = 6;
+const parseEnvInt = (value: string | undefined, fallback: number) => {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+const MAX_VIBES = parseEnvInt(process.env.NEXT_PUBLIC_MAX_VIBES, 6);
 const MIN_CLUSTER_SIZE = 6;
-const NEW_SONGS_PER_VIBE = 10;
+const NEW_SONGS_PER_VIBE = parseEnvInt(process.env.NEXT_PUBLIC_NEW_SONGS_PER_VIBE, 10);
 
 interface TrackSummary {
     id: string;

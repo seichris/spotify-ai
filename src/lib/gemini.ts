@@ -1,10 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = process.env.GEMINI_API_KEY;
+const apiKey = process.env.SPOTIFY_GEMINI_API_KEY;
 
 export async function generateSongSuggestions(prompt: string) {
     if (!apiKey) {
-        throw new Error("GEMINI_API_KEY is not defined");
+        throw new Error("SPOTIFY_GEMINI_API_KEY is not defined");
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
