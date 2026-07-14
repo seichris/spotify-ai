@@ -9,8 +9,9 @@ import {
   ZoomControl,
 } from "@react-sigma/core";
 import { createNodeImageProgram } from "@sigma/node-image";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { usePlayer } from "@/components/PlayerProvider";
 import ClusterFocus from "@/components/network/ClusterFocus";
 import DiscoveryControls from "@/components/network/DiscoveryControls";
 import DiscoveryTray from "@/components/network/DiscoveryTray";
@@ -89,6 +90,7 @@ export default function SongMapClient({
   const [selectedCluster, setSelectedCluster] = useState<ClusterProfile | null>(
     null,
   );
+  const { currentTrack, isPaused, togglePlay } = usePlayer();
   const previewGraph = useMemo(() => buildPreviewGraph(songs), [songs]);
   const {
     clusters,
@@ -296,16 +298,9 @@ export default function SongMapClient({
             discovery.dismissCandidate(trackId);
             if (selectedTrack?.id === trackId) setSelectedTrack(null);
           }}
-          onDiscover={(scope) =>
+          onDiscover={() =>
             discovery.discover({
-              scope,
               selectedTrackId: activeTrack.id,
-            })
-          }
-          onMoreLikeCandidate={(candidate) =>
-            discovery.discover({
-              candidateSeed: candidate,
-              scope: "song",
             })
           }
           onPlaySong={
@@ -343,19 +338,6 @@ export default function SongMapClient({
                     .join(" · ")}
                 </p>
               )}
-              <button
-                type="button"
-                onClick={() =>
-                  discovery.discover({
-                    cluster: selectedCluster,
-                    scope: "cluster",
-                  })
-                }
-                disabled={discovery.isLoading}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Discover this neighborhood
-              </button>
             </div>
             <button
               type="button"
@@ -371,7 +353,12 @@ export default function SongMapClient({
 
       <DiscoveryTray
         candidates={discovery.candidates}
+        currentTrackUri={currentTrack?.uri}
         error={discovery.error}
+        feedbackError={discovery.feedbackError}
+        feedbackStates={discovery.feedbackStates}
+        feedbackStats={discovery.feedbackStats}
+        isPlaybackPaused={isPaused}
         isLoading={discovery.isLoading}
         onAddToPlaylist={discovery.addCandidateToPlaylist}
         onClear={() => {
@@ -382,9 +369,7 @@ export default function SongMapClient({
           discovery.dismissCandidate(trackId);
           if (selectedTrack?.id === trackId) setSelectedTrack(null);
         }}
-        onMoreLikeThis={(candidate) =>
-          discovery.discover({ candidateSeed: candidate, scope: "song" })
-        }
+        onFeedback={discovery.recordFeedback}
         onPlay={async (candidate) => {
           if (!onPlaySong) return;
           const started = await onPlaySong(candidate.track);
@@ -399,6 +384,7 @@ export default function SongMapClient({
         playlistStates={discovery.playlistStates}
         saveStates={discovery.saveStates}
         summary={discovery.summary}
+        onTogglePlayback={togglePlay}
       />
     </div>
   );

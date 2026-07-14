@@ -139,6 +139,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ...session,
         access_token: token.access_token,
         error: token.error,
+        spotify_user_id: token.sub,
       }
     },
   },

@@ -98,6 +98,23 @@ export type DiscoveryScope = "song" | "neighborhood" | "cluster";
 
 export type ExplorationMode = "familiar" | "balanced" | "adventurous";
 
+export type RecommendationStrategy = "song" | "neighborhood";
+
+export type RecommendationFeedback = "up" | "down";
+
+export type RecommendationFeedbackState =
+  | "saving"
+  | "saved"
+  | "error";
+
+export interface RecommendationStrategyStats {
+  disliked: number;
+  liked: number;
+  likeRate: number | null;
+  strategy: RecommendationStrategy;
+  total: number;
+}
+
 export type DiscoveryEventType =
   | "candidate_shown"
   | "candidate_selected"
@@ -106,7 +123,9 @@ export type DiscoveryEventType =
   | "candidate_saved"
   | "candidate_playlisted"
   | "candidate_dismissed"
-  | "more_like_candidate";
+  | "more_like_candidate"
+  | "recommendation_liked"
+  | "recommendation_disliked";
 
 export type DiscoveryConfidence = "high" | "medium" | "low" | "weak";
 
@@ -179,6 +198,7 @@ export interface CandidateAnchor {
 export interface DiscoveryCandidate extends ResolvedDiscoverySuggestion {
   anchors: CandidateAnchor[];
   confidence: DiscoveryConfidence;
+  feedback?: RecommendationFeedback;
   mapped: boolean;
   score: number;
   scope: DiscoveryScope;

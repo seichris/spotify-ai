@@ -24,6 +24,8 @@ const EVENT_TYPES = new Set<DiscoveryEventType>([
   "candidate_playlisted",
   "candidate_dismissed",
   "more_like_candidate",
+  "recommendation_liked",
+  "recommendation_disliked",
 ]);
 const CANDIDATE_STATUSES = new Set([
   "unseen",
@@ -76,6 +78,9 @@ const isCandidate = (value: unknown): value is DiscoveryCandidate => {
     typeof value.score === "number" &&
     Number.isFinite(value.score) &&
     typeof value.mapped === "boolean" &&
+    (value.feedback === undefined ||
+      value.feedback === "up" ||
+      value.feedback === "down") &&
     typeof value.confidence === "string" &&
     CANDIDATE_CONFIDENCE.has(value.confidence) &&
     typeof value.scope === "string" &&
@@ -199,6 +204,8 @@ const EVENT_WEIGHTS: Record<DiscoveryEventType, number> = {
   more_like_candidate: 0.4,
   preview_completed: 0.25,
   preview_started: 0.12,
+  recommendation_disliked: -1,
+  recommendation_liked: 1,
 };
 
 export const rerankDiscoveryCandidates = (

@@ -1,20 +1,42 @@
-import { HeartPlus, ListPlus, MapPin, Play, RefreshCw, X } from "lucide-react";
+import {
+  HeartPlus,
+  ListPlus,
+  MapPin,
+  Pause,
+  Play,
+  RefreshCw,
+  ThumbsDown,
+  ThumbsUp,
+  X,
+} from "lucide-react";
 import type {
   CandidateSaveState,
   DiscoveryCandidate,
+  RecommendationFeedback,
+  RecommendationFeedbackState,
+  RecommendationStrategyStats,
 } from "@/types/network";
 
 interface DiscoveryTrayProps {
   candidates: DiscoveryCandidate[];
+  currentTrackUri?: string;
   error: string | null;
+  feedbackError: string | null;
+  feedbackStates: Record<string, RecommendationFeedbackState>;
+  feedbackStats: RecommendationStrategyStats[];
+  isPlaybackPaused: boolean;
   isLoading: boolean;
   onAddToPlaylist: (candidate: DiscoveryCandidate) => void;
   onClear: () => void;
   onDismiss: (trackId: string) => void;
-  onMoreLikeThis: (candidate: DiscoveryCandidate) => void;
+  onFeedback: (
+    candidate: DiscoveryCandidate,
+    feedback: RecommendationFeedback,
+  ) => void;
   onPlay: (candidate: DiscoveryCandidate) => void | Promise<void>;
   onSelect: (candidate: DiscoveryCandidate) => void;
   onSave: (candidate: DiscoveryCandidate) => void;
+  onTogglePlayback: () => void;
   playlistStates: Record<string, "adding" | "added" | "error">;
   saveStates: Record<string, CandidateSaveState>;
   summary: string;
@@ -25,17 +47,28 @@ const confidenceLabel = (candidate: DiscoveryCandidate) =>
     ? `${candidate.confidence} map match`
     : "weak map match";
 
+const statsLabel = (stats: RecommendationStrategyStats | undefined) => {
+  if (!stats || stats.likeRate === null) return "No ratings yet";
+  return `${Math.round(stats.likeRate * 100)}% liked (${stats.total})`;
+};
+
 export default function DiscoveryTray({
   candidates,
+  currentTrackUri,
   error,
+  feedbackError,
+  feedbackStates,
+  feedbackStats,
+  isPlaybackPaused,
   isLoading,
   onAddToPlaylist,
   onClear,
   onDismiss,
-  onMoreLikeThis,
+  onFeedback,
   onPlay,
   onSelect,
   onSave,
+  onTogglePlayback,
   playlistStates,
   saveStates,
   summary,
@@ -53,6 +86,13 @@ export default function DiscoveryTray({
           {summary && (
             <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-500">
               {summary}
+            </p>
+          )}
+          {feedbackStats.length > 0 && (
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">
+              Song seed: {statsLabel(feedbackStats.find((item) => item.strategy === "song"))}
+              <span aria-hidden="true"> · </span>
+              Neighborhood: {statsLabel(feedbackStats.find((item) => item.strategy === "neighborhood"))}
             </p>
           )}
         </div>
@@ -78,7 +118,15 @@ export default function DiscoveryTray({
             {error}
           </p>
         )}
+        {feedbackError && (
+          <p role="alert" className="rounded-lg bg-red-950/40 p-3 text-xs text-red-300">
+            {feedbackError}
+          </p>
+        )}
         {candidates.map((candidate) => {
+          const feedbackState = feedbackStates[candidate.recommendationId];
+          const isCurrentTrack = currentTrackUri === candidate.track.uri;
+          const isPlaying = isCurrentTrack && !isPlaybackPaused;
           const playlistState = playlistStates[candidate.track.id];
           const saveState = saveStates[candidate.track.id];
           const isSaved = candidate.status === "saved" || saveState === "saved";
@@ -87,7 +135,7 @@ export default function DiscoveryTray({
             candidate.track.album.images[0]?.url;
           return (
             <article
-              key={candidate.track.id}
+              key={candidate.recommendationId}
               className="rounded-lg border border-white/10 bg-zinc-950/80 p-2.5"
             >
               <div className="flex gap-2.5">
@@ -114,13 +162,54 @@ export default function DiscoveryTray({
               <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
                 {candidate.proposal.reason}
               </p>
+              {(candidate.scope === "song" || candidate.scope === "neighborhood") && (
+                <div className="mt-2 rounded-lg bg-white/[0.03] p-2">
+                  <p className="text-[11px] text-zinc-300">
+                    Do you like this song recommendation?
+                  </p>
+                  <div className="mt-1.5 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onFeedback(candidate, "up")}
+                      disabled={feedbackState === "saving"}
+                      aria-label={`Like ${candidate.track.name} recommendation`}
+                      aria-pressed={candidate.feedback === "up"}
+                      className={`rounded-full border p-1.5 transition-colors disabled:opacity-50 ${candidate.feedback === "up" ? "border-green-400 bg-green-400/20 text-green-300" : "border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"}`}
+                    >
+                      <ThumbsUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onFeedback(candidate, "down")}
+                      disabled={feedbackState === "saving"}
+                      aria-label={`Dislike ${candidate.track.name} recommendation`}
+                      aria-pressed={candidate.feedback === "down"}
+                      className={`rounded-full border p-1.5 transition-colors disabled:opacity-50 ${candidate.feedback === "down" ? "border-red-400 bg-red-400/20 text-red-300" : "border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"}`}
+                    >
+                      <ThumbsDown className="h-3.5 w-3.5" />
+                    </button>
+                    {feedbackState === "saving" && (
+                      <span className="self-center text-[10px] text-zinc-500">
+                        Saving…
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => onPlay(candidate)}
+                  onClick={() =>
+                    isCurrentTrack ? onTogglePlayback() : onPlay(candidate)
+                  }
                   className="inline-flex items-center gap-1 rounded-full bg-green-500 px-2 py-1 text-[10px] font-semibold text-black hover:bg-green-400"
                 >
-                  <Play className="h-3 w-3 fill-current" /> Play
+                  {isPlaying ? (
+                    <Pause className="h-3 w-3 fill-current" />
+                  ) : (
+                    <Play className="h-3 w-3 fill-current" />
+                  )}
+                  {isPlaying ? "Pause" : "Play"}
                 </button>
                 <button
                   type="button"
@@ -134,14 +223,14 @@ export default function DiscoveryTray({
                 >
                   <HeartPlus className="h-3 w-3" />
                   {isSaved
-                    ? "Saved"
+                    ? "In Liked Songs"
                     : saveState === "saving"
-                      ? "Saving…"
+                      ? "Adding…"
                       : saveState === "reauthorize"
                         ? "Sign in again"
                         : saveState === "error"
-                          ? "Retry save"
-                          : "Save"}
+                          ? "Retry Liked songs"
+                          : "Liked songs"}
                 </button>
                 {candidate.mapped && (
                   <button
@@ -160,20 +249,12 @@ export default function DiscoveryTray({
                 >
                   <ListPlus className="h-3 w-3" />
                   {playlistState === "added"
-                    ? "Added"
+                    ? "In Vibe Map Playlist"
                     : playlistState === "adding"
                       ? "Adding…"
                       : playlistState === "error"
-                        ? "Retry playlist"
-                        : "Playlist"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMoreLikeThis(candidate)}
-                  disabled={!candidate.mapped}
-                  className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-zinc-300 hover:bg-white/10 disabled:opacity-40"
-                >
-                  More like this
+                        ? "Retry Vibe Map Playlist"
+                        : "Vibe Map Playlist"}
                 </button>
                 {!isSaved && (
                   <button

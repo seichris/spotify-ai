@@ -40,7 +40,7 @@ export default function DiscoveryControls({
           onClick={onReset}
           className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-zinc-500 hover:bg-white/10 hover:text-white"
           aria-label="Reset discovery history"
-          title="Clear dismissed songs, recommendations, and discovery feedback"
+          title="Clear local discovery history and dismissed songs"
         >
           <RotateCcw className="h-3 w-3" /> Reset
         </button>

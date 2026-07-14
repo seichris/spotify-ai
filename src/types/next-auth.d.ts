@@ -4,6 +4,7 @@ declare module "next-auth" {
     interface Session {
         access_token?: string
         error?: string
+        spotify_user_id?: string
         user: {
             address?: string
         } & DefaultSession["user"]

@@ -5,6 +5,8 @@ import {
   addTracksToPlaylistAction,
   createPlaylistAction,
   getMapDiscoveryCandidatesAction,
+  getRecommendationFeedbackStatsAction,
+  recordRecommendationFeedbackAction,
   saveTracksToLibraryAction,
 } from "@/app/actions";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
@@ -16,25 +18,24 @@ import {
   rerankDiscoveryCandidates,
   writeDiscoverySession,
 } from "@/lib/network/discoveryFeedback";
+import { mixDiscoveryCandidates } from "@/lib/network/mixDiscoveryCandidates";
 import { scoreDiscoveryCandidates } from "@/lib/network/scoreDiscoveryCandidates";
 import type {
-  ClusterProfile,
   CandidateSaveState,
   DiscoveryCandidate,
   DiscoveryEvent,
   DiscoveryEventType,
-  DiscoveryScope,
-  DiscoveryTrackSummary,
   ExplorationMode,
+  RecommendationFeedback,
+  RecommendationFeedbackState,
+  RecommendationStrategy,
+  RecommendationStrategyStats,
   ResolvedDiscoverySuggestion,
 } from "@/types/network";
 
-const DISCOVERY_PLAYLIST_KEY = "map_discovery_playlist_v1";
+const DISCOVERY_PLAYLIST_KEY = "vibe_map_playlist_v2";
 
 interface DiscoveryRequest {
-  candidateSeed?: DiscoveryCandidate;
-  cluster?: ClusterProfile | null;
-  scope: DiscoveryScope;
   selectedTrackId?: string | null;
 }
 
@@ -46,14 +47,6 @@ interface PlaylistReference {
 interface UseMapDiscoveryOptions {
   onCandidateSaved?: (track: EnrichedTrack) => void;
 }
-
-const toSummary = (track: EnrichedTrack): DiscoveryTrackSummary => ({
-  artistIds: track.artists.map((artist) => artist.id),
-  artistNames: track.artists.map((artist) => artist.name),
-  genres: track.genres,
-  id: track.id,
-  name: track.name,
-});
 
 const loadPlaylistReference = (): PlaylistReference | null => {
   try {
@@ -79,6 +72,13 @@ export const useMapDiscovery = (
   const [events, setEvents] = useState<DiscoveryEvent[]>([]);
   const [exploration, setExploration] =
     useState<ExplorationMode>("balanced");
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackStates, setFeedbackStates] = useState<
+    Record<string, RecommendationFeedbackState>
+  >({});
+  const [feedbackStats, setFeedbackStats] = useState<
+    RecommendationStrategyStats[]
+  >([]);
   const [hasRestored, setHasRestored] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [playlistStates, setPlaylistStates] = useState<
@@ -89,6 +89,7 @@ export const useMapDiscovery = (
   >({});
   const [summary, setSummary] = useState("");
   const eventSequence = useRef(0);
+  const feedbackRequests = useRef(new Set<string>());
   const playlistRequests = useRef(new Set<string>());
   const requestVersion = useRef(0);
   const runningDiscovery = useRef<number | null>(null);
@@ -102,6 +103,18 @@ export const useMapDiscovery = (
     setExploration(restored.exploration);
     setSummary(restored.summary);
     setHasRestored(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getRecommendationFeedbackStatsAction().then((result) => {
+      if (!cancelled && result.success && result.stats) {
+        setFeedbackStats(result.stats);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -184,59 +197,54 @@ export const useMapDiscovery = (
   );
 
   const discover = useCallback(
-    async ({ candidateSeed, cluster, scope, selectedTrackId }: DiscoveryRequest) => {
+    async ({ selectedTrackId }: DiscoveryRequest) => {
       if (!graph || isLoading || runningDiscovery.current !== null) return;
       const version = requestVersion.current + 1;
       requestVersion.current = version;
       runningDiscovery.current = version;
       setIsLoading(true);
       setError(null);
-
-      if (candidateSeed) recordEvent(candidateSeed, "more_like_candidate");
+      setFeedbackError(null);
 
       try {
-        let context = createDiscoveryContext({
-          cluster,
-          dismissedTrackIds,
-          exploration,
-          graph,
-          scope,
-          selectedTrackId,
-          tracks: likedTracks,
-        });
-
-        if (candidateSeed) {
-          const strongestLikedAnchor = candidateSeed.anchors[0]?.trackId;
-          context = createDiscoveryContext({
+        const contexts = (["song", "neighborhood"] as const).map((scope) =>
+          createDiscoveryContext({
             dismissedTrackIds,
             exploration,
             graph,
-            scope: "neighborhood",
-            selectedTrackId: strongestLikedAnchor,
+            scope,
+            selectedTrackId,
             tracks: likedTracks,
-          });
-          context = {
-            ...context,
-            scope: "song",
-            seedTracks: [toSummary(candidateSeed.track)],
-            topGenres: candidateSeed.track.genres.slice(0, 8),
-          };
-        }
-
-        const result = await getMapDiscoveryCandidatesAction(context);
-        if (!result.success || !("suggestions" in result)) {
-          throw new Error(result.error ?? "Discovery failed.");
-        }
-        const scored = scoreDiscoveryCandidates(
-          result.suggestions as ResolvedDiscoverySuggestion[],
-          likedTracks,
-          context,
+          }),
         );
-        const ranked = rerankDiscoveryCandidates(
-          scored,
-          likedTracks,
-          exploration,
-          events,
+        const runId = globalThis.crypto.randomUUID();
+        const rankedByStrategy = await Promise.all(
+          contexts.map(async (context) => {
+            const result = await getMapDiscoveryCandidatesAction(context);
+            if (!result.success || !("suggestions" in result)) {
+              throw new Error(result.error ?? "Discovery failed.");
+            }
+            const scored = scoreDiscoveryCandidates(
+              result.suggestions as ResolvedDiscoverySuggestion[],
+              likedTracks,
+              context,
+            );
+            return rerankDiscoveryCandidates(
+              scored,
+              likedTracks,
+              exploration,
+              events,
+            )
+              .slice(0, 5)
+              .map((candidate) => ({
+                ...candidate,
+                recommendationId: `${runId}-${context.scope}-${candidate.track.id}`,
+              }));
+          }),
+        );
+        const ranked = mixDiscoveryCandidates(
+          rankedByStrategy[0],
+          rankedByStrategy[1],
         );
         if (ranked.length === 0) {
           throw new Error("No new Spotify matches survived validation.");
@@ -247,7 +255,10 @@ export const useMapDiscovery = (
             ...current,
             ...ranked.map((candidate) => eventFor(candidate, "candidate_shown")),
           ].slice(-500));
-          setSummary(result.summary ?? "");
+          setFeedbackStates({});
+          setSummary(
+            `${ranked.length} recommendations mixed from song and neighborhood matches.`,
+          );
         }
       } catch (requestError) {
         if (requestVersion.current === version) {
@@ -272,8 +283,88 @@ export const useMapDiscovery = (
       graph,
       isLoading,
       likedTracks,
-      recordEvent,
     ],
+  );
+
+  const recordFeedback = useCallback(
+    async (
+      candidate: DiscoveryCandidate,
+      feedback: RecommendationFeedback,
+    ) => {
+      if (
+        (candidate.scope !== "song" && candidate.scope !== "neighborhood") ||
+        feedbackRequests.current.has(candidate.recommendationId)
+      ) {
+        return;
+      }
+      const previousFeedback = candidate.feedback;
+      feedbackRequests.current.add(candidate.recommendationId);
+      setFeedbackError(null);
+      setFeedbackStates((current) => ({
+        ...current,
+        [candidate.recommendationId]: "saving",
+      }));
+      setCandidates((current) =>
+        current.map((item) =>
+          item.recommendationId === candidate.recommendationId
+            ? { ...item, feedback }
+            : item,
+        ),
+      );
+
+      try {
+        const result = await recordRecommendationFeedbackAction({
+          exploration,
+          feedback,
+          recommendationId: candidate.recommendationId,
+          strategy: candidate.scope as RecommendationStrategy,
+          trackId: candidate.track.id,
+        });
+        if (!result.success) {
+          throw new Error(result.error ?? "Could not record feedback.");
+        }
+        setFeedbackStates((current) => ({
+          ...current,
+          [candidate.recommendationId]: "saved",
+        }));
+        if (result.stats) setFeedbackStats(result.stats);
+        const event = eventFor(
+          candidate,
+          feedback === "up"
+            ? "recommendation_liked"
+            : "recommendation_disliked",
+        );
+        setEvents((current) => [
+          ...current.filter(
+            (item) =>
+              item.recommendationId !== candidate.recommendationId ||
+              (item.type !== "recommendation_liked" &&
+                item.type !== "recommendation_disliked"),
+          ),
+          event,
+        ].slice(-500));
+      } catch (feedbackRequestError) {
+        setCandidates((current) =>
+          current.map((item) =>
+            item.recommendationId === candidate.recommendationId
+              ? { ...item, feedback: previousFeedback }
+              : item,
+          ),
+        );
+        setFeedbackStates((current) => ({
+          ...current,
+          [candidate.recommendationId]: "error",
+        }));
+        setFeedbackError(
+          feedbackRequestError instanceof Error
+            ? feedbackRequestError.message
+            : "Could not record feedback.",
+        );
+      } finally {
+        feedbackRequests.current.delete(candidate.recommendationId);
+      }
+    },
+    [eventFor, exploration],
   );
 
   const dismissCandidate = useCallback(
@@ -303,7 +394,7 @@ export const useMapDiscovery = (
         let playlist = loadPlaylistReference();
         if (!playlist) {
           const created = await createPlaylistAction(
-            "Map Discoveries",
+            "Vibe Map Playlist",
             "Songs discovered from the Spotify similarity map.",
             false,
           );
@@ -425,6 +516,8 @@ export const useMapDiscovery = (
     runningDiscovery.current = null;
     setCandidates([]);
     setError(null);
+    setFeedbackError(null);
+    setFeedbackStates({});
     setIsLoading(false);
     setSummary("");
   }, []);
@@ -438,6 +531,8 @@ export const useMapDiscovery = (
     setError(null);
     setEvents([]);
     setExploration("balanced");
+    setFeedbackError(null);
+    setFeedbackStates({});
     setIsLoading(false);
     setPlaylistStates({});
     setSaveStates({});
@@ -454,10 +549,14 @@ export const useMapDiscovery = (
     error,
     events,
     exploration,
+    feedbackError,
+    feedbackStates,
+    feedbackStats,
     hasRestored,
     isLoading,
     playlistStates,
     previewCandidate,
+    recordFeedback,
     resetFeedback,
     saveCandidate,
     saveStates,

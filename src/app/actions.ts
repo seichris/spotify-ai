@@ -19,10 +19,17 @@ import {
     normalizeSpotifyId,
     normalizeTrackUris,
 } from "@/lib/spotifyValidation";
+import {
+    getRecommendationFeedbackStats,
+    recordRecommendationFeedback,
+} from "@/lib/recommendationFeedback";
 import type { SpotifyTrack } from "@/lib/spotify";
 import type {
     DiscoveryContext,
     DiscoveryProposal,
+    ExplorationMode,
+    RecommendationFeedback,
+    RecommendationStrategy,
     ResolvedDiscoverySuggestion,
 } from "@/types/network";
 
@@ -143,6 +150,14 @@ interface StructuredDiscoveryResponse {
 
 const DISCOVERY_SCOPES = new Set(["song", "neighborhood", "cluster"]);
 const EXPLORATION_MODES = new Set(["familiar", "balanced", "adventurous"]);
+const RECOMMENDATION_STRATEGIES = new Set<RecommendationStrategy>([
+    "song",
+    "neighborhood",
+]);
+const RECOMMENDATION_FEEDBACK = new Set<RecommendationFeedback>([
+    "up",
+    "down",
+]);
 
 const sanitizeTrackSummary = (value: unknown) => {
     if (!value || typeof value !== "object") return null;
@@ -393,6 +408,65 @@ export async function getMapDiscoveryCandidatesAction(context: DiscoveryContext)
                 ? "Discovery is unavailable from this server location."
                 : "Failed to find nearby discoveries",
         };
+    }
+}
+
+interface RecommendationFeedbackInput {
+    exploration: ExplorationMode;
+    feedback: RecommendationFeedback;
+    recommendationId: string;
+    strategy: RecommendationStrategy;
+    trackId: string;
+}
+
+const isValidFeedbackIdentifier = (value: unknown) =>
+    typeof value === "string" && value.length > 0 && value.length <= 240;
+
+export async function recordRecommendationFeedbackAction(
+    input: RecommendationFeedbackInput,
+) {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    if (!session?.spotify_user_id) {
+        return { success: false, error: "Sign in to record feedback." };
+    }
+    if (
+        !input ||
+        !RECOMMENDATION_STRATEGIES.has(input.strategy) ||
+        !RECOMMENDATION_FEEDBACK.has(input.feedback) ||
+        !EXPLORATION_MODES.has(input.exploration) ||
+        !isValidFeedbackIdentifier(input.recommendationId) ||
+        !isValidFeedbackIdentifier(input.trackId)
+    ) {
+        return { success: false, error: "Invalid recommendation feedback." };
+    }
+
+    try {
+        await recordRecommendationFeedback({
+            ...input,
+            userId: session.spotify_user_id,
+        });
+        const stats = await getRecommendationFeedbackStats();
+        return { success: true, stats };
+    } catch (error) {
+        console.error("Error recording recommendation feedback:", error);
+        return { success: false, error: "Could not record feedback." };
+    }
+}
+
+export async function getRecommendationFeedbackStatsAction() {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    if (!session?.spotify_user_id) {
+        return { success: false, error: "Sign in to view feedback stats." };
+    }
+
+    try {
+        const stats = await getRecommendationFeedbackStats();
+        return { success: true, stats };
+    } catch (error) {
+        console.error("Error loading recommendation feedback stats:", error);
+        return { success: false, error: "Could not load feedback stats." };
     }
 }
 

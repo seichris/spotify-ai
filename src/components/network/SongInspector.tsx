@@ -1,4 +1,4 @@
-import { HeartPlus, ListPlus, Play, Radar, Sparkles, X } from "lucide-react";
+import { HeartPlus, ListPlus, Play, Sparkles, X } from "lucide-react";
 import type Graph from "graphology";
 import SimilarityExplanation from "@/components/network/SimilarityExplanation";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
@@ -6,7 +6,6 @@ import type {
   ClusterProfile,
   CandidateSaveState,
   DiscoveryCandidate,
-  DiscoveryScope,
   SongGraphEdgeAttributes,
   SongGraphNodeAttributes,
 } from "@/types/network";
@@ -22,8 +21,7 @@ interface SongInspectorProps {
   onAddCandidateToPlaylist?: (candidate: DiscoveryCandidate) => void;
   onClear: () => void;
   onDismissCandidate?: (trackId: string) => void;
-  onDiscover?: (scope: DiscoveryScope) => void;
-  onMoreLikeCandidate?: (candidate: DiscoveryCandidate) => void;
+  onDiscover?: () => void;
   onPlaySong?: (track: EnrichedTrack) => boolean | Promise<boolean>;
   onSaveCandidate?: (candidate: DiscoveryCandidate) => void;
   tracksById: Map<string, EnrichedTrack>;
@@ -41,7 +39,6 @@ export default function SongInspector({
   onClear,
   onDismissCandidate,
   onDiscover,
-  onMoreLikeCandidate,
   onPlaySong,
   onSaveCandidate,
   tracksById,
@@ -114,24 +111,14 @@ export default function SongInspector({
             </button>
           )}
           {!candidate && onDiscover && (
-            <>
-              <button
-                type="button"
-                onClick={() => onDiscover("song")}
-                disabled={isDiscovering}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-              >
-                <Sparkles className="h-3.5 w-3.5" /> More like this
-              </button>
-              <button
-                type="button"
-                onClick={() => onDiscover("neighborhood")}
-                disabled={isDiscovering}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-              >
-                <Radar className="h-3.5 w-3.5" /> Explore neighbors
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={onDiscover}
+              disabled={isDiscovering}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Discover 10 songs
+            </button>
           )}
           {candidate && (
             <>
@@ -148,14 +135,14 @@ export default function SongInspector({
                 >
                   <HeartPlus className="h-3.5 w-3.5" />
                   {candidateSaveState === "saving"
-                    ? "Saving…"
+                    ? "Adding…"
                     : candidateSaveState === "saved"
-                      ? "Saved"
+                      ? "In Liked Songs"
                       : candidateSaveState === "reauthorize"
                         ? "Sign in again"
                         : candidateSaveState === "error"
-                          ? "Retry save"
-                          : "Save"}
+                          ? "Retry Liked songs"
+                          : "Liked songs"}
                 </button>
               )}
               {onAddCandidateToPlaylist && (
@@ -164,16 +151,7 @@ export default function SongInspector({
                   onClick={() => onAddCandidateToPlaylist(candidate)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10"
                 >
-                  <ListPlus className="h-3.5 w-3.5" /> Playlist
-                </button>
-              )}
-              {onMoreLikeCandidate && (
-                <button
-                  type="button"
-                  onClick={() => onMoreLikeCandidate(candidate)}
-                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10"
-                >
-                  More like this
+                  <ListPlus className="h-3.5 w-3.5" /> Vibe Map Playlist
                 </button>
               )}
               {onDismissCandidate && (
