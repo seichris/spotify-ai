@@ -4,6 +4,9 @@ const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 
 async function getAccessToken() {
     const session = await auth();
+    if (session?.error === "RefreshTokenError") {
+        throw new Error("Spotify session expired");
+    }
     if (!session?.access_token) {
         throw new Error("No access token found");
     }
@@ -36,7 +39,7 @@ export async function fetchSpotify(endpoint: string, options: RequestInit = {}) 
         let errorJson;
         try {
             errorJson = JSON.parse(errorText);
-        } catch (e) {
+        } catch {
             // Not JSON
         }
 
@@ -45,17 +48,19 @@ export async function fetchSpotify(endpoint: string, options: RequestInit = {}) 
         throw new Error(errorJson?.error?.message || `Spotify API Error: ${res.status} - ${errorText}`);
     }
 
-    return res.json();
+    const responseText = await res.text();
+    return responseText ? JSON.parse(responseText) : null;
 }
 
 export interface SpotifyTrack {
     id: string;
     name: string;
     artists: { id: string; name: string }[];
-    album: { name: string; images: { url: string }[] };
+    album: { id: string; name: string; images: { url: string }[] };
     duration_ms: number;
     uri: string;
     is_local: boolean;
+    is_playable?: boolean;
     type: string;
 }
 
@@ -91,8 +96,8 @@ export async function searchSpotify(query: string, type: string = 'track', limit
     return fetchSpotify(`/search?${params.toString()}`);
 }
 
-export async function createPlaylist(userId: string, name: string, description: string, isPublic = false) {
-    return fetchSpotify(`/users/${userId}/playlists`, {
+export async function createPlaylist(name: string, description: string, isPublic = false) {
+    return fetchSpotify("/me/playlists", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -106,7 +111,7 @@ export async function createPlaylist(userId: string, name: string, description: 
 }
 
 export async function addTracksToPlaylist(playlistId: string, uris: string[]) {
-    return fetchSpotify(`/playlists/${playlistId}/tracks`, {
+    return fetchSpotify(`/playlists/${playlistId}/items`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -115,8 +120,15 @@ export async function addTracksToPlaylist(playlistId: string, uris: string[]) {
     });
 }
 
+export async function saveItemsToLibrary(uris: string[]) {
+    const params = new URLSearchParams({ uris: uris.join(",") });
+    return fetchSpotify(`/me/library?${params.toString()}`, {
+        method: "PUT",
+    });
+}
+
 export async function replacePlaylistTracks(playlistId: string, uris: string[]) {
-    return fetchSpotify(`/playlists/${playlistId}/tracks`, {
+    return fetchSpotify(`/playlists/${playlistId}/items`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",

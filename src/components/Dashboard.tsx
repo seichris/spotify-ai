@@ -17,13 +17,13 @@ type GeminiCacheEntry = {
 };
 
 export default function Dashboard() {
-    const { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll } = useSpotifyLibrary();
+    const { songs, isLoading, isLoadingMore, hasMore, progress, total, loadMore, loadAll, promoteSavedTrack } = useSpotifyLibrary();
     const { isActive, isPaused, playTrack, togglePlay, nextTrack, previousTrack } = usePlayer();
     const [selectedSong, setSelectedSong] = useState<EnrichedTrack | null>(null);
     const [viewMode, setViewMode] = useState<"recommends" | "sort" | "network">("network");
     const observerTarget = useRef<HTMLDivElement | null>(null);
+    const libraryLoadStarted = useRef(false);
     const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
-    const [networkSeed, setNetworkSeed] = useState(0);
 
     const {
         isBuilding,
@@ -40,8 +40,10 @@ export default function Dashboard() {
     const [cachedSuggestionsMap, setCachedSuggestionsMap] = useState<Record<string, SpotifyTrack[]>>({});
 
     useEffect(() => {
-        fetchLibrary();
-    }, [fetchLibrary]);
+        if (libraryLoadStarted.current) return;
+        libraryLoadStarted.current = true;
+        void loadAll();
+    }, [loadAll]);
 
     // Load cached suggestions for visible songs
     useEffect(() => {
@@ -153,17 +155,6 @@ export default function Dashboard() {
         await buildVibePlaylists(library);
     };
 
-    const handleLoadNetwork = async () => {
-        if (isPreparingLibrary) return;
-        setIsPreparingLibrary(true);
-        try {
-            await loadAll();
-            setNetworkSeed(Date.now());
-        } finally {
-            setIsPreparingLibrary(false);
-        }
-    };
-
     if (isLoading && songs.length === 0 && viewMode === "recommends") {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-black text-white">
@@ -178,9 +169,9 @@ export default function Dashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-white p-8 pb-32 relative">
+        <div className={`min-h-screen bg-zinc-950 text-white relative ${viewMode === "network" ? "overflow-hidden" : "p-8 pb-32"}`}>
             {/* Floating Header Navigation */}
-            <div className="fixed top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50 backdrop-blur-md p-1.5 rounded-full shadow-xl">
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50 rounded-full border border-white/10 bg-black/75 p-1.5 shadow-xl backdrop-blur-md">
                 {/* <button
                     onClick={() => setViewMode('recommends')}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'recommends' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'}`}
@@ -211,7 +202,7 @@ export default function Dashboard() {
                 </button>
             </div>
 
-            <div className="max-w-4xl mx-auto mt-24">
+            <div className={viewMode === "network" ? "fixed inset-0" : "max-w-4xl mx-auto mt-24"}>
                 {viewMode === "recommends" ? (
                     <div className="space-y-2">
                         {/* <div className="flex justify-between items-end mb-6 px-2">
@@ -230,10 +221,11 @@ export default function Dashboard() {
                                         onClick={() => handleSongClick(song)}
                                         className={`flex items-start p-3 cursor-pointer hover:bg-zinc-800/50 transition-colors h-full ${selectedSong?.id === song.id ? "bg-zinc-800/80" : ""}`}
                                     >
-                                        <img
-                                            src={song.album.images[2]?.url}
-                                            alt={song.album.name}
-                                            className="h-16 w-16 rounded mr-4 shadow-sm object-cover shrink-0"
+                                        <div
+                                            role="img"
+                                            aria-label={`${song.album.name} cover`}
+                                            className="mr-4 h-16 w-16 shrink-0 rounded bg-zinc-800 bg-cover bg-center shadow-sm"
+                                            style={song.album.images[2]?.url ? { backgroundImage: `url(${song.album.images[2].url})` } : undefined}
                                         />
                                         <div className="flex-1 min-w-0 overflow-hidden">
                                             <p className={`font-medium truncate ${selectedSong?.id === song.id ? "text-green-400" : "text-zinc-200"}`}>{song.name}</p>
@@ -267,12 +259,19 @@ export default function Dashboard() {
                                                         className="flex flex-col justify-center min-w-[140px] h-20 p-2 bg-zinc-900/80 rounded-md cursor-pointer hover:bg-zinc-800 transition-all group relative shrink-0"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            playTrack(suggestion.uri);
+                                                            void playTrack(suggestion.uri).catch((playbackError) => {
+                                                                console.error("Could not start Spotify playback", playbackError);
+                                                            });
                                                         }}
                                                     >
                                                         <div className="flex items-center gap-2 mb-1">
                                                             {suggestion.album.images[2] && (
-                                                                <img src={suggestion.album.images[2].url} alt={suggestion.name} className="w-8 h-8 rounded shadow-sm" />
+                                                                <div
+                                                                    role="img"
+                                                                    aria-label={`${suggestion.name} cover`}
+                                                                    className="h-8 w-8 rounded bg-zinc-800 bg-cover bg-center shadow-sm"
+                                                                    style={{ backgroundImage: `url(${suggestion.album.images[2].url})` }}
+                                                                />
                                                             )}
                                                             <div className="overflow-hidden">
                                                                 <p className="text-xs font-medium text-zinc-300 group-hover:text-white truncate">
@@ -459,72 +458,35 @@ export default function Dashboard() {
                         )} */}
                     </div>
                 ) : (
-                    <div className="space-y-6 animate-in fade-in duration-500">
-                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                            <div className="space-y-2">
-                                <h2 className="text-xl font-bold">Network Map</h2>
-                                <p className="text-sm text-zinc-400 max-w-xl">
-                                    Explore all of your liked song covers as a 2D network grouped by vibe and artist connections.
-                                </p>
-                                <p className="text-xs text-zinc-500">
-                                    {isFullLibraryLoaded ? `${songs.length} songs mapped.` : "Load your full library to map everything."}
-                                </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <Button
-                                    variant="primary"
-                                    isLoading={isPreparingLibrary}
-                                    onClick={handleLoadNetwork}
-                                    disabled={isPreparingLibrary}
-                                >
-                                    {isPreparingLibrary ? "Loading Library..." : "Load Full Library"}
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setNetworkSeed(Date.now())}
-                                    disabled={!isFullLibraryLoaded}
-                                >
-                                    Shuffle Layout
-                                </Button>
-                            </div>
-                        </div>
-
-                        {(isPreparingLibrary || isLoading) && (
-                            <p className="text-xs text-zinc-400">
-                                Loading library... {Math.round(progress)}%
-                            </p>
-                        )}
-
-                        <SongNetwork songs={isFullLibraryLoaded ? songs : []} seed={networkSeed} />
+                    <div className="h-full w-full animate-in fade-in duration-500">
+                        <SongNetwork
+                            songs={isFullLibraryLoaded ? songs : []}
+                            onCandidateSaved={promoteSavedTrack}
+                            onPlaySong={async (song) => {
+                                try {
+                                    await playTrack(song.uri);
+                                    return true;
+                                } catch (playbackError) {
+                                    console.error("Could not start Spotify playback", playbackError);
+                                    return false;
+                                }
+                            }}
+                        />
                     </div>
                 )}
             </div>
 
-            {/* Player Bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-md p-4 z-50">
-                <div className="max-w-screen-xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-4 w-1/3">
-                        {/* Currently Playing Info could go here */}
-                    </div>
-                    <div className="flex items-center justify-center gap-4 w-1/3">
-                        <Button variant="ghost" size="icon" onClick={previousTrack} disabled={!isActive} className="hover:text-white text-zinc-400">
-                            <SkipBack className="h-5 w-5" />
-                        </Button>
-                        <Button variant="primary" size="icon" className="rounded-full h-10 w-10" onClick={togglePlay} disabled={!isActive}>
-                            {isPaused ? <Play className="h-5 w-5 fill-black ml-0.5" /> : <Pause className="h-5 w-5 fill-black" />}
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={nextTrack} disabled={!isActive} className="hover:text-white text-zinc-400">
-                            <SkipForward className="h-5 w-5" />
-                        </Button>
-                    </div>
-                    <div className="w-1/3 flex justify-end">
-                        {!isActive && (
-                            <p className="text-xs text-yellow-500 hidden md:block">
-                                Open Spotify on a device to enable playback.
-                            </p>
-                        )}
-                    </div>
-                </div>
+            {/* Floating Player Controls */}
+            <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center gap-3 rounded-full border border-white/10 bg-black/75 p-1.5 shadow-xl backdrop-blur-md">
+                <Button variant="ghost" size="icon" onClick={previousTrack} disabled={!isActive} className="hover:text-white text-zinc-400">
+                    <SkipBack className="h-5 w-5" />
+                </Button>
+                <Button variant="primary" size="icon" className="rounded-full h-10 w-10" onClick={togglePlay} disabled={!isActive}>
+                    {isPaused ? <Play className="h-5 w-5 fill-black ml-0.5" /> : <Pause className="h-5 w-5 fill-black" />}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={nextTrack} disabled={!isActive} className="hover:text-white text-zinc-400">
+                    <SkipForward className="h-5 w-5" />
+                </Button>
             </div>
         </div >
     );

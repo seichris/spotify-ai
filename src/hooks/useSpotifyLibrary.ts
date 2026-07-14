@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { getLikedSongsAction, getArtistsAction, getUserProfileAction, signOutAction } from "@/app/actions";
 import { SpotifyTrack } from "@/lib/spotify";
 
@@ -28,6 +28,7 @@ interface LikedSongsActionResult {
 export interface EnrichedTrack extends SpotifyTrack {
     features: null; // Deprecated/Restricted
     genres: string[];
+    added_at?: string;
 }
 
 export function useSpotifyLibrary() {
@@ -38,6 +39,7 @@ export function useSpotifyLibrary() {
     const [total, setTotal] = useState(0);
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(true);
+    const locallyPromotedIds = useRef(new Set<string>());
 
     const BATCH_SIZE = 50;
     const LIBRARY_CACHE_KEY = 'spotify_library_cache';
@@ -274,5 +276,17 @@ export function useSpotifyLibrary() {
         }
     }, []);
 
-    return { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll };
+    const promoteSavedTrack = useCallback((track: EnrichedTrack) => {
+        if (locallyPromotedIds.current.has(track.id)) return;
+        locallyPromotedIds.current.add(track.id);
+        setSongs((current) =>
+            current.some((song) => song.id === track.id)
+                ? current
+                : [track, ...current],
+        );
+        setTotal((current) => current + 1);
+        setOffset((current) => current + 1);
+    }, []);
+
+    return { songs, isLoading, isLoadingMore, hasMore, progress, total, fetchLibrary, loadMore, loadAll, promoteSavedTrack };
 }
