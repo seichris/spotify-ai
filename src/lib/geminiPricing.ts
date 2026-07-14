@@ -15,6 +15,11 @@ export const GEMINI_MODEL_PRICING: Record<string, GeminiPricing> = {
     outputPer1M: 3,
     status: "Latest",
   },
+  "gemini-3.5-flash": {
+    inputPer1M: 1.5,
+    outputPer1M: 9,
+    status: "Stable",
+  },
   "gemini-2.5-flash": {
     inputPer1M: 0.3,
     outputPer1M: 2.5,

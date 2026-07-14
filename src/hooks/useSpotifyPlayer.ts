@@ -129,8 +129,8 @@ export function useSpotifyPlayer(token: string) {
     }, [token]);
 
     const playTrack = useCallback(async (uri: string) => {
-        if (!deviceId) return;
-        await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        if (!deviceId) throw new Error("No Spotify playback device is ready");
+        const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
             method: 'PUT',
             body: JSON.stringify({ uris: [uri] }),
             headers: {
@@ -138,6 +138,9 @@ export function useSpotifyPlayer(token: string) {
                 'Authorization': `Bearer ${token}`
             },
         });
+        if (!response.ok) {
+            throw new Error(`Spotify playback failed (${response.status})`);
+        }
     }, [deviceId, token]);
 
     const togglePlay = useCallback(() => {

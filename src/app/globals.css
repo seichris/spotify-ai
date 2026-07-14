@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "@react-sigma/core/lib/style.css";
+@import "tailwindcss";
 
 :root {
   --foreground-rgb: 255, 255, 255;
@@ -16,4 +15,30 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
+}
+
+.song-map {
+  --sigma-background-color: transparent;
+  --sigma-controls-background-color: rgba(9, 9, 11, 0.82);
+  --sigma-controls-background-color-hover: rgba(39, 39, 42, 0.9);
+  --sigma-controls-border-color: rgba(255, 255, 255, 0.12);
+  --sigma-controls-color: rgb(212, 212, 216);
+}
+
+.song-map .react-sigma,
+.song-map .sigma-container {
+  height: 100%;
+  width: 100%;
+  background: transparent;
+}
+
+.song-map .react-sigma-control button {
+  background: rgba(9, 9, 11, 0.82);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgb(212, 212, 216);
+}
+
+.song-map .react-sigma-control button:hover {
+  background: rgba(39, 39, 42, 0.9);
+  color: white;
 }
