@@ -7,8 +7,8 @@ import type {
   ExplorationMode,
 } from "@/types/network";
 
-export const DISCOVERY_SESSION_SCHEMA_VERSION = 1;
-export const DISCOVERY_SESSION_STORAGE_KEY = "song_map_discovery_session_v1";
+export const DISCOVERY_SESSION_SCHEMA_VERSION = 2;
+export const DISCOVERY_SESSION_STORAGE_KEY = "song_map_discovery_session_v2";
 
 const EXPLORATION_MODES = new Set<ExplorationMode>([
   "familiar",
@@ -78,6 +78,10 @@ const isCandidate = (value: unknown): value is DiscoveryCandidate => {
     typeof value.score === "number" &&
     Number.isFinite(value.score) &&
     typeof value.mapped === "boolean" &&
+    typeof value.recommendationExploration === "string" &&
+    EXPLORATION_MODES.has(
+      value.recommendationExploration as ExplorationMode,
+    ) &&
     (value.feedback === undefined ||
       value.feedback === "up" ||
       value.feedback === "down") &&
@@ -129,6 +133,13 @@ export const createEmptyDiscoverySession = (): DiscoverySessionState => ({
   schemaVersion: DISCOVERY_SESSION_SCHEMA_VERSION,
   summary: "",
   updatedAt: 0,
+});
+
+export const createDiscoverySessionState = (
+  state: Omit<DiscoverySessionState, "schemaVersion">,
+): DiscoverySessionState => ({
+  ...state,
+  schemaVersion: DISCOVERY_SESSION_SCHEMA_VERSION,
 });
 
 export const parseDiscoverySession = (

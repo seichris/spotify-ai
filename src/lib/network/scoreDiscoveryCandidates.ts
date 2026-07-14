@@ -84,6 +84,7 @@ export const scoreDiscoveryCandidates = (
         anchors,
         confidence: confidenceFor(score),
         mapped: anchors.length > 0,
+        recommendationExploration: context.exploration,
         score,
         scope: context.scope,
         status: "unseen" as const,
