@@ -19,6 +19,7 @@ const candidate = (
     title: `Track ${id}`,
   },
   recommendationId: `rec-${scope}-${id}`,
+  recommendationExploration: "balanced",
   resolutionConfidence: 1,
   scope,
   score: 0.5,
@@ -60,5 +61,22 @@ describe("mixDiscoveryCandidates", () => {
     );
 
     expect(result.map((item) => item.track.id)).toEqual(["shared", "unique"]);
+  });
+
+  it("randomizes attribution when both strategies return the same track", () => {
+    const mixWith = (overlapSelection: number) => {
+      const values = [overlapSelection, 0.999];
+      return mixDiscoveryCandidates(
+        [candidate("shared", "song")],
+        [
+          candidate("shared", "neighborhood"),
+          candidate("unique", "neighborhood"),
+        ],
+        () => values.shift() ?? 0.999,
+      ).find((item) => item.track.id === "shared");
+    };
+
+    expect(mixWith(0)?.scope).toBe("song");
+    expect(mixWith(0.999)?.scope).toBe("neighborhood");
   });
 });

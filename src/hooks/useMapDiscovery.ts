@@ -14,6 +14,7 @@ import type { SongGraph } from "@/lib/network/buildGraph";
 import { createDiscoveryContext } from "@/lib/network/discoveryContext";
 import {
   clearDiscoverySession,
+  createDiscoverySessionState,
   readDiscoverySession,
   rerankDiscoveryCandidates,
   writeDiscoverySession,
@@ -119,15 +120,16 @@ export const useMapDiscovery = (
 
   useEffect(() => {
     if (!hasRestored) return;
-    writeDiscoverySession({
-      candidates,
-      dismissedTrackIds,
-      events,
-      exploration,
-      schemaVersion: 1,
-      summary,
-      updatedAt: Date.now(),
-    });
+    writeDiscoverySession(
+      createDiscoverySessionState({
+        candidates,
+        dismissedTrackIds,
+        events,
+        exploration,
+        summary,
+        updatedAt: Date.now(),
+      }),
+    );
   }, [
     candidates,
     dismissedTrackIds,
@@ -217,7 +219,6 @@ export const useMapDiscovery = (
             tracks: likedTracks,
           }),
         );
-        const runId = globalThis.crypto.randomUUID();
         const rankedByStrategy = await Promise.all(
           contexts.map(async (context) => {
             const result = await getMapDiscoveryCandidatesAction(context);
@@ -234,12 +235,7 @@ export const useMapDiscovery = (
               likedTracks,
               exploration,
               events,
-            )
-              .slice(0, 5)
-              .map((candidate) => ({
-                ...candidate,
-                recommendationId: `${runId}-${context.scope}-${candidate.track.id}`,
-              }));
+            ).slice(0, 5);
           }),
         );
         const ranked = mixDiscoveryCandidates(
@@ -314,7 +310,7 @@ export const useMapDiscovery = (
 
       try {
         const result = await recordRecommendationFeedbackAction({
-          exploration,
+          exploration: candidate.recommendationExploration,
           feedback,
           recommendationId: candidate.recommendationId,
           strategy: candidate.scope as RecommendationStrategy,
@@ -364,7 +360,7 @@ export const useMapDiscovery = (
         feedbackRequests.current.delete(candidate.recommendationId);
       }
     },
-    [eventFor, exploration],
+    [eventFor],
   );
 
   const dismissCandidate = useCallback(

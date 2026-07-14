@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   createEmptyDiscoverySession,
+  createDiscoverySessionState,
+  DISCOVERY_SESSION_SCHEMA_VERSION,
   parseDiscoverySession,
   rerankDiscoveryCandidates,
 } from "@/lib/network/discoveryFeedback";
 import type {
   DiscoveryCandidate,
   DiscoveryEvent,
-  DiscoverySessionState,
 } from "@/types/network";
 import { makeTrack, networkFixtureTracks } from "@/lib/network/__tests__/fixtures";
 
@@ -38,6 +39,7 @@ const makeCandidate = (
     title: `Candidate ${id}`,
   },
   recommendationId: `rec-${id}`,
+  recommendationExploration: "balanced",
   resolutionConfidence: 1,
   score,
   scope: "neighborhood",
@@ -69,22 +71,26 @@ const makeEvent = (
 describe("discovery session persistence", () => {
   it("round-trips a bounded versioned session and rejects stale schemas", () => {
     const candidate = makeCandidate("candidate-a", "artist-new");
-    const state: DiscoverySessionState = {
+    const state = createDiscoverySessionState({
       candidates: [candidate],
       dismissedTrackIds: ["dismissed-a", "dismissed-a"],
       events: [makeEvent("candidate_shown", candidate.track.id, ["artist-new"])],
       exploration: "adventurous",
-      schemaVersion: 1,
       summary: "A discovery pocket",
       updatedAt: 123,
-    };
+    });
     const restored = parseDiscoverySession(JSON.stringify(state));
 
     expect(restored.candidates[0].track.id).toBe(candidate.track.id);
     expect(restored.dismissedTrackIds).toEqual(["dismissed-a"]);
     expect(restored.exploration).toBe("adventurous");
     expect(
-      parseDiscoverySession(JSON.stringify({ ...state, schemaVersion: 2 })),
+      parseDiscoverySession(
+        JSON.stringify({
+          ...state,
+          schemaVersion: DISCOVERY_SESSION_SCHEMA_VERSION + 1,
+        }),
+      ),
     ).toEqual(createEmptyDiscoverySession());
   });
 });
@@ -131,5 +137,18 @@ describe("feedback-aware discovery ranking", () => {
     ).toBe("known");
     expect(familiar.score).toBe(0.2);
     expect(novel.score).toBe(0.2);
+  });
+
+  it("keeps the generation range when existing candidates are reranked", () => {
+    const balancedCandidate = makeCandidate("balanced", "artist-new");
+
+    const [reranked] = rerankDiscoveryCandidates(
+      [balancedCandidate],
+      networkFixtureTracks,
+      "familiar",
+      [],
+    );
+
+    expect(reranked.recommendationExploration).toBe("balanced");
   });
 });

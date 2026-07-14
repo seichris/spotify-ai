@@ -200,6 +200,7 @@ export interface DiscoveryCandidate extends ResolvedDiscoverySuggestion {
   confidence: DiscoveryConfidence;
   feedback?: RecommendationFeedback;
   mapped: boolean;
+  recommendationExploration: ExplorationMode;
   score: number;
   scope: DiscoveryScope;
   status: CandidateStatus;

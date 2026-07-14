@@ -23,6 +23,10 @@ import {
     getRecommendationFeedbackStats,
     recordRecommendationFeedback,
 } from "@/lib/recommendationFeedback";
+import {
+    createRecommendationFeedbackToken,
+    verifyRecommendationFeedbackToken,
+} from "@/lib/recommendationFeedbackToken";
 import type { SpotifyTrack } from "@/lib/spotify";
 import type {
     DiscoveryContext,
@@ -327,6 +331,12 @@ export async function getGeminiSuggestionsAction(songName: string, artistName: s
 
 export async function getMapDiscoveryCandidatesAction(context: DiscoveryContext) {
     try {
+        const { auth } = await import("@/auth");
+        const session = await auth();
+        if (!session?.spotify_user_id) {
+            return { success: false, error: "Sign in to discover songs." };
+        }
+        const userId = session.spotify_user_id;
         if (
             !context ||
             typeof context !== "object" ||
@@ -398,7 +408,20 @@ export async function getMapDiscoveryCandidatesAction(context: DiscoveryContext)
             seedIds,
             excludedTrackIds,
         );
-        return { success: true, ...result };
+        let suggestions = result.suggestions;
+        if (context.scope === "song" || context.scope === "neighborhood") {
+            const strategy = context.scope;
+            suggestions = result.suggestions.map((suggestion) => ({
+                ...suggestion,
+                recommendationId: createRecommendationFeedbackToken({
+                    exploration: context.exploration,
+                    strategy,
+                    trackId: suggestion.track.id,
+                    userId,
+                }),
+            }));
+        }
+        return { success: true, ...result, suggestions };
     } catch (error) {
         console.error("Error getting map discoveries:", error);
         const message = getErrorMessage(error).toLowerCase();
@@ -440,10 +463,26 @@ export async function recordRecommendationFeedbackAction(
     ) {
         return { success: false, error: "Invalid recommendation feedback." };
     }
+    const tokenClaims = verifyRecommendationFeedbackToken(
+        input.recommendationId,
+    );
+    if (
+        !tokenClaims ||
+        tokenClaims.userId !== session.spotify_user_id ||
+        tokenClaims.trackId !== input.trackId ||
+        tokenClaims.strategy !== input.strategy ||
+        tokenClaims.exploration !== input.exploration
+    ) {
+        return { success: false, error: "Invalid recommendation feedback." };
+    }
 
     try {
         await recordRecommendationFeedback({
-            ...input,
+            exploration: tokenClaims.exploration,
+            feedback: input.feedback,
+            recommendationId: input.recommendationId,
+            strategy: tokenClaims.strategy,
+            trackId: tokenClaims.trackId,
             userId: session.spotify_user_id,
         });
         const stats = await getRecommendationFeedbackStats();

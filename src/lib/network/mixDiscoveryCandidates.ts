@@ -21,8 +21,18 @@ export const mixDiscoveryCandidates = (
     ...songCandidates.slice(0, 5),
     ...neighborhoodCandidates.slice(0, 5),
   ];
+  const byTrack = new Map<string, DiscoveryCandidate[]>();
+  mixed.forEach((candidate) => {
+    const candidates = byTrack.get(candidate.track.id) ?? [];
+    candidates.push(candidate);
+    byTrack.set(candidate.track.id, candidates);
+  });
   const unique = Array.from(
-    new Map(mixed.map((candidate) => [candidate.track.id, candidate])).values(),
+    byTrack.values(),
+    (candidates) =>
+      candidates.length === 1
+        ? candidates[0]
+        : candidates[Math.floor(random() * candidates.length)],
   );
   return shuffle(unique, random);
 };
