@@ -72,8 +72,8 @@ export default async function RecommendationStatsPage() {
               Recommendation experiment
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
-              Compare the five song-seeded and five neighborhood-seeded results
-              mixed into every discovery run.
+              Compare up to five song-seeded and five neighborhood-seeded
+              results mixed into each discovery run.
             </p>
           </div>
           <Link
@@ -205,7 +205,11 @@ export default async function RecommendationStatsPage() {
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold">Last 30 days</h2>
+            <h2 className="text-lg font-semibold">Latest rating updates</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Current ratings grouped by their most recent update in the last
+              30 days.
+            </p>
             <div className="mt-3 overflow-x-auto rounded-2xl border border-white/10">
               <table className="w-full min-w-[32rem] text-left text-sm">
                 <thead className="bg-white/[0.04] text-xs text-zinc-500">
@@ -241,7 +245,7 @@ export default async function RecommendationStatsPage() {
                   {dates.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-4 py-8 text-center text-zinc-600">
-                        No ratings in the last 30 days.
+                        No rating updates in the last 30 days.
                       </td>
                     </tr>
                   )}

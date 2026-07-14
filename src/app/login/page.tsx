@@ -1,17 +1,15 @@
 import { signIn } from "@/auth";
 import { Button } from "@/components/ui/Button";
+import { getSafeLoginRedirect } from "@/lib/loginRedirect";
 import { Music2 } from "lucide-react";
 
 interface LoginPageProps {
-  searchParams: Promise<{ redirectTo?: string }>;
+  searchParams: Promise<{ redirectTo?: string | string[] }>;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { redirectTo } = await searchParams;
-  const safeRedirect =
-    redirectTo?.startsWith("/") && !redirectTo.startsWith("//")
-      ? redirectTo
-      : "/";
+  const safeRedirect = getSafeLoginRedirect(redirectTo);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-black p-4 text-white">
