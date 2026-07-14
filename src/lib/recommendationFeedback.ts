@@ -98,6 +98,39 @@ interface FeedbackAggregateRow {
   total: string | number;
 }
 
+export interface RecommendationFeedbackOverview {
+  disliked: number;
+  liked: number;
+  likeRate: number | null;
+  total: number;
+  uniqueUsers: number;
+  updatedAt: string | null;
+}
+
+export interface ExplorationFeedbackStats {
+  disliked: number;
+  exploration: ExplorationMode;
+  liked: number;
+  likeRate: number | null;
+  total: number;
+}
+
+export interface DailyFeedbackStats {
+  date: string;
+  disliked: number;
+  liked: number;
+  likeRate: number | null;
+  strategy: RecommendationStrategy;
+  total: number;
+}
+
+export interface RecommendationFeedbackDashboard {
+  daily: DailyFeedbackStats[];
+  exploration: ExplorationFeedbackStats[];
+  overview: RecommendationFeedbackOverview;
+  strategies: RecommendationStrategyStats[];
+}
+
 const emptyStats = (
   strategy: RecommendationStrategy,
 ): RecommendationStrategyStats => ({
@@ -136,4 +169,107 @@ export const getRecommendationFeedbackStats = async (): Promise<
       total,
     };
   });
+};
+
+interface OverviewRow {
+  disliked: string | number;
+  liked: string | number;
+  total: string | number;
+  unique_users: string | number;
+  updated_at: Date | string | null;
+}
+
+interface ExplorationAggregateRow {
+  disliked: string | number;
+  exploration: ExplorationMode;
+  liked: string | number;
+  total: string | number;
+}
+
+interface DailyAggregateRow {
+  date: string;
+  disliked: string | number;
+  liked: string | number;
+  strategy: RecommendationStrategy;
+  total: string | number;
+}
+
+const withLikeRate = <T extends { liked: number; total: number }>(value: T) => ({
+  ...value,
+  likeRate: value.total > 0 ? value.liked / value.total : null,
+});
+
+export const getRecommendationFeedbackDashboard = async (): Promise<
+  RecommendationFeedbackDashboard
+> => {
+  const sql = await ensureFeedbackTable();
+  const [strategies, overviewRows, explorationRows, dailyRows] =
+    await Promise.all([
+      getRecommendationFeedbackStats(),
+      sql`
+        SELECT
+          COUNT(*)::INT AS total,
+          COUNT(*) FILTER (WHERE feedback = 1)::INT AS liked,
+          COUNT(*) FILTER (WHERE feedback = -1)::INT AS disliked,
+          COUNT(DISTINCT user_id)::INT AS unique_users,
+          MAX(updated_at) AS updated_at
+        FROM recommendation_feedback
+      `,
+      sql`
+        SELECT
+          exploration,
+          COUNT(*)::INT AS total,
+          COUNT(*) FILTER (WHERE feedback = 1)::INT AS liked,
+          COUNT(*) FILTER (WHERE feedback = -1)::INT AS disliked
+        FROM recommendation_feedback
+        GROUP BY exploration
+        ORDER BY exploration
+      `,
+      sql`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', updated_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS date,
+          strategy,
+          COUNT(*)::INT AS total,
+          COUNT(*) FILTER (WHERE feedback = 1)::INT AS liked,
+          COUNT(*) FILTER (WHERE feedback = -1)::INT AS disliked
+        FROM recommendation_feedback
+        WHERE updated_at >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE_TRUNC('day', updated_at AT TIME ZONE 'UTC'), strategy
+        ORDER BY DATE_TRUNC('day', updated_at AT TIME ZONE 'UTC') DESC, strategy
+      `,
+    ]);
+  const overviewRow = (overviewRows as OverviewRow[])[0];
+  const overviewTotal = Number(overviewRow?.total ?? 0);
+  const overviewLiked = Number(overviewRow?.liked ?? 0);
+
+  return {
+    daily: (dailyRows as DailyAggregateRow[]).map((row) =>
+      withLikeRate({
+        date: row.date,
+        disliked: Number(row.disliked),
+        liked: Number(row.liked),
+        strategy: row.strategy,
+        total: Number(row.total),
+      }),
+    ),
+    exploration: (explorationRows as ExplorationAggregateRow[]).map((row) =>
+      withLikeRate({
+        disliked: Number(row.disliked),
+        exploration: row.exploration,
+        liked: Number(row.liked),
+        total: Number(row.total),
+      }),
+    ),
+    overview: {
+      disliked: Number(overviewRow?.disliked ?? 0),
+      liked: overviewLiked,
+      likeRate: overviewTotal > 0 ? overviewLiked / overviewTotal : null,
+      total: overviewTotal,
+      uniqueUsers: Number(overviewRow?.unique_users ?? 0),
+      updatedAt: overviewRow?.updated_at
+        ? new Date(overviewRow.updated_at).toISOString()
+        : null,
+    },
+    strategies,
+  };
 };
