@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   fetchSpotify: vi.fn(),
   generateStructuredSongSuggestions: vi.fn(),
+  getRecommendationLearningProfile: vi.fn(),
   getTrackAudioFeatures: vi.fn(),
+  recordRecommendationImpressions: vi.fn(),
   searchSpotify: vi.fn(),
   selectBestSpotifyMatch: vi.fn(),
 }));
@@ -35,13 +37,16 @@ vi.mock("@/lib/discoveryResolution", () => ({
   selectBestSpotifyMatch: mocks.selectBestSpotifyMatch,
 }));
 vi.mock("@/lib/recommendationFeedback", () => ({
+  getRecommendationLearningProfile: mocks.getRecommendationLearningProfile,
   getRecommendationFeedbackStats: vi.fn(),
+  recordRecommendationImpressions: mocks.recordRecommendationImpressions,
   recordRecommendationFeedback: vi.fn(),
 }));
 
 import {
   getGeminiVibeMetadataAction,
   getMapDiscoveryCandidatesAction,
+  getRecommendationLearningProfileAction,
 } from "@/app/actions";
 
 const context: DiscoveryContext = {
@@ -58,6 +63,25 @@ const context: DiscoveryContext = {
   dismissedTrackIds: [],
   existingTrackIds: ["seed-track"],
   exploration: "balanced",
+  learningProfile: {
+    artistAffinities: {},
+    artistNames: {},
+    avoidedArtists: [],
+    avoidedGenres: ["techno"],
+    energyFitWeight: 0.5,
+    genreAffinities: { "dream pop": 1 },
+    noveltyWeight: 0.5,
+    preferredArtists: [],
+    preferredGenres: ["dream pop"],
+    rejectedTrackIds: [],
+    sampleSize: 4,
+    strategies: [
+      { disliked: 0, impressions: 0, liked: 0, strategy: "song" },
+      { disliked: 0, impressions: 0, liked: 0, strategy: "neighborhood" },
+    ],
+    tempoFitWeight: 0.5,
+  },
+  resultLimit: 3,
   scope: "song",
   seedTracks: [
     {
@@ -136,6 +160,18 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
       expect.stringContaining('"tempoBpm":118'),
       expect.any(Object),
     );
+    expect(mocks.generateStructuredSongSuggestions).toHaveBeenCalledWith(
+      expect.stringContaining("selecting exactly 3 real songs"),
+      expect.any(Object),
+    );
+    expect(mocks.generateStructuredSongSuggestions).toHaveBeenCalledWith(
+      expect.stringContaining('"preferredGenres":["dream pop"]'),
+      expect.any(Object),
+    );
+    expect(result.suggestions[0]).toMatchObject({
+      recommendationModel: "test-model",
+      recommendationPromptVersion: "feedback-loop-v1",
+    });
     expect(
       verifyRecommendationFeedbackToken(
         result.suggestions[0].recommendationId,
@@ -146,6 +182,25 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
       trackId: "track-123",
       userId: "owner-123",
     });
+  });
+
+  it("fails tracking preflight when the learning database is unavailable", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mocks.getRecommendationLearningProfile.mockRejectedValueOnce(
+      new Error("Database unavailable"),
+    );
+
+    await expect(getRecommendationLearningProfileAction()).resolves.toEqual({
+      error: "Could not prepare recommendation tracking.",
+      success: false,
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Error loading recommendation learning profile:",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
   });
 });
 

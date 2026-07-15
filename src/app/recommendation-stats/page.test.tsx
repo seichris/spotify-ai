@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
@@ -37,8 +38,11 @@ describe("RecommendationStatsPage access", () => {
       exploration: [],
       overview: {
         disliked: 0,
+        impressions: 0,
         liked: 0,
         likeRate: null,
+        positiveRate: null,
+        ratingRate: null,
         total: 0,
         uniqueUsers: 0,
         updatedAt: null,
@@ -73,5 +77,99 @@ describe("RecommendationStatsPage access", () => {
 
     await expect(RecommendationStatsPage()).resolves.toBeTruthy();
     expect(mocks.getRecommendationFeedbackDashboard).toHaveBeenCalledOnce();
+  });
+
+  it("does not declare a strategy winner before anyone rates a song", async () => {
+    mocks.auth.mockResolvedValue({ spotify_user_id: "owner-123" });
+    mocks.canViewRecommendationStats.mockReturnValue(true);
+    mocks.getRecommendationFeedbackDashboard.mockResolvedValue({
+      daily: [],
+      exploration: [],
+      overview: {
+        disliked: 0,
+        impressions: 10,
+        liked: 0,
+        likeRate: null,
+        positiveRate: 0,
+        ratingRate: 0,
+        total: 0,
+        uniqueUsers: 0,
+        updatedAt: null,
+      },
+      strategies: [
+        {
+          disliked: 0,
+          impressions: 5,
+          liked: 0,
+          likeRate: null,
+          positiveRate: 0,
+          ratingRate: 0,
+          strategy: "song",
+          total: 0,
+        },
+        {
+          disliked: 0,
+          impressions: 5,
+          liked: 0,
+          likeRate: null,
+          positiveRate: 0,
+          ratingRate: 0,
+          strategy: "neighborhood",
+          total: 0,
+        },
+      ],
+    });
+
+    const html = renderToStaticMarkup(await RecommendationStatsPage());
+
+    expect(html).toContain("Waiting for recommendation impressions and ratings.");
+    expect(html).not.toContain("currently produces the most likes per impression");
+  });
+
+  it("does not declare a winner when the strategies are tied", async () => {
+    mocks.auth.mockResolvedValue({ spotify_user_id: "owner-123" });
+    mocks.canViewRecommendationStats.mockReturnValue(true);
+    mocks.getRecommendationFeedbackDashboard.mockResolvedValue({
+      daily: [],
+      exploration: [],
+      overview: {
+        disliked: 8,
+        impressions: 20,
+        liked: 2,
+        likeRate: 0.2,
+        positiveRate: 0.1,
+        ratingRate: 0.5,
+        total: 10,
+        uniqueUsers: 1,
+        updatedAt: null,
+      },
+      strategies: [
+        {
+          disliked: 4,
+          impressions: 10,
+          liked: 1,
+          likeRate: 0.2,
+          positiveRate: 0.1,
+          ratingRate: 0.5,
+          strategy: "song",
+          total: 5,
+        },
+        {
+          disliked: 4,
+          impressions: 10,
+          liked: 1,
+          likeRate: 0.2,
+          positiveRate: 0.1,
+          ratingRate: 0.5,
+          strategy: "neighborhood",
+          total: 5,
+        },
+      ],
+    });
+
+    const html = renderToStaticMarkup(await RecommendationStatsPage());
+
+    expect(html).toContain("No clear leader yet; the strategies are tied.");
+    expect(html).not.toContain("currently produces the most likes per impression");
   });
 });

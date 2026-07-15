@@ -1,13 +1,15 @@
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
+import { learnedRecommendationBoost } from "@/lib/network/recommendationLearning";
 import type {
   DiscoveryCandidate,
   DiscoveryEvent,
   DiscoveryEventType,
   DiscoverySessionState,
   ExplorationMode,
+  RecommendationLearningProfile,
 } from "@/types/network";
 
-export const DISCOVERY_SESSION_SCHEMA_VERSION = 2;
+export const DISCOVERY_SESSION_SCHEMA_VERSION = 3;
 export const DISCOVERY_SESSION_STORAGE_KEY = "song_map_discovery_session_v2";
 
 const EXPLORATION_MODES = new Set<ExplorationMode>([
@@ -149,9 +151,12 @@ export const parseDiscoverySession = (
 
   try {
     const value = JSON.parse(serialized) as unknown;
+    const isLegacySession =
+      isRecord(value) && value.schemaVersion === 2;
     if (
       !isRecord(value) ||
-      value.schemaVersion !== DISCOVERY_SESSION_SCHEMA_VERSION ||
+      (value.schemaVersion !== DISCOVERY_SESSION_SCHEMA_VERSION &&
+        !isLegacySession) ||
       !Array.isArray(value.candidates) ||
       !value.candidates.every(isCandidate) ||
       !isStringArray(value.dismissedTrackIds) ||
@@ -166,14 +171,14 @@ export const parseDiscoverySession = (
     }
 
     return {
-      candidates: value.candidates.slice(0, 12),
+      candidates: isLegacySession ? [] : value.candidates.slice(0, 12),
       dismissedTrackIds: Array.from(
         new Set(value.dismissedTrackIds.slice(0, 500)),
       ),
       events: value.events.slice(-500),
       exploration: value.exploration as ExplorationMode,
       schemaVersion: DISCOVERY_SESSION_SCHEMA_VERSION,
-      summary: value.summary.slice(0, 1200),
+      summary: isLegacySession ? "" : value.summary.slice(0, 1200),
       updatedAt: value.updatedAt,
     };
   } catch {
@@ -224,6 +229,7 @@ export const rerankDiscoveryCandidates = (
   likedTracks: EnrichedTrack[],
   exploration: ExplorationMode,
   events: DiscoveryEvent[],
+  learningProfile?: RecommendationLearningProfile,
 ) => {
   const likedArtistIds = new Set(
     likedTracks.flatMap((track) => track.artists.map((artist) => artist.id)),
@@ -250,14 +256,17 @@ export const rerankDiscoveryCandidates = (
         ) / artistIds.length
       : 0;
     const resolutionBonus = candidate.resolutionConfidence * 0.02;
+    const learnedBoost = learningProfile
+      ? learnedRecommendationBoost(candidate, knownArtist, learningProfile)
+      : 0;
 
     if (exploration === "familiar") {
-      return candidate.score * 1.2 + Number(knownArtist) * 0.07 + feedback * 0.05 + resolutionBonus;
+      return candidate.score * 1.2 + Number(knownArtist) * 0.07 + feedback * 0.05 + resolutionBonus + learnedBoost;
     }
     if (exploration === "adventurous") {
-      return candidate.score * 0.7 + Number(!knownArtist) * 0.15 + feedback * 0.08 + resolutionBonus;
+      return candidate.score * 0.7 + Number(!knownArtist) * 0.15 + feedback * 0.08 + resolutionBonus + learnedBoost;
     }
-    return candidate.score + Number(!knownArtist) * 0.05 + feedback * 0.07 + resolutionBonus;
+    return candidate.score + Number(!knownArtist) * 0.05 + feedback * 0.07 + resolutionBonus + learnedBoost;
   };
 
   return [...candidates].sort(

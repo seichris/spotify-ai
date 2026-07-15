@@ -24,6 +24,7 @@ export default function Dashboard() {
     const observerTarget = useRef<HTMLDivElement | null>(null);
     const libraryLoadStarted = useRef(false);
     const [isPreparingLibrary, setIsPreparingLibrary] = useState(false);
+    const [isMapDiscoveryBusy, setIsMapDiscoveryBusy] = useState(false);
 
     const {
         isBuilding,
@@ -180,9 +181,9 @@ export default function Dashboard() {
                 </button> */}
                 <button
                     onClick={() => setViewMode('sort')}
-                    disabled={!isFullLibraryLoaded}
+                    disabled={!isFullLibraryLoaded || isMapDiscoveryBusy}
                     aria-pressed={viewMode === 'sort'}
-                    className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs backdrop-blur-md transition-colors ${viewMode === 'sort' ? 'bg-white/10 text-white' : 'bg-black/70 text-zinc-300 hover:bg-white/5 hover:text-white'} ${!isFullLibraryLoaded ? 'cursor-not-allowed opacity-50 hover:bg-black/70 hover:text-zinc-300' : ''}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs backdrop-blur-md transition-colors ${viewMode === 'sort' ? 'bg-white/10 text-white' : 'bg-black/70 text-zinc-300 hover:bg-white/5 hover:text-white'} ${!isFullLibraryLoaded || isMapDiscoveryBusy ? 'cursor-not-allowed opacity-50 hover:bg-black/70 hover:text-zinc-300' : ''}`}
                 >
                     <AudioWaveform aria-hidden="true" className="h-3.5 w-3.5" />
                     Vibe Playlists
@@ -201,7 +202,8 @@ export default function Dashboard() {
                         localStorage.removeItem('spotify_library_cache');
                         signOutAction();
                     }}
-                    className="inline-flex rounded-full border border-white/10 bg-black/70 p-1.5 text-zinc-300 backdrop-blur-md transition-colors hover:bg-white/5 hover:text-white"
+                    disabled={isMapDiscoveryBusy}
+                    className="inline-flex rounded-full border border-white/10 bg-black/70 p-1.5 text-zinc-300 backdrop-blur-md transition-colors hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     title="Sign out"
                 >
                     <X aria-hidden="true" className="h-3.5 w-3.5" />
@@ -464,6 +466,7 @@ export default function Dashboard() {
                     <div className="h-full w-full animate-in fade-in duration-500">
                         <SongNetwork
                             libraryProgress={progress}
+                            onDiscoveryBusyChange={setIsMapDiscoveryBusy}
                             songs={isFullLibraryLoaded ? songs : []}
                             onCandidateSaved={promoteSavedTrack}
                             onPlaySong={async (song) => {

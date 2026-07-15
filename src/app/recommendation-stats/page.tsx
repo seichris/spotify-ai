@@ -52,13 +52,22 @@ export default async function RecommendationStatsPage() {
   const dashboard = await getRecommendationFeedbackDashboard();
   const dates = Array.from(new Set(dashboard.daily.map((row) => row.date)));
   const ratedStrategies = dashboard.strategies.filter(
-    (strategy) => strategy.total > 0 && strategy.likeRate !== null,
+    (strategy) =>
+      strategy.impressions > 0 &&
+      strategy.total > 0 &&
+      strategy.positiveRate !== null,
   );
-  const winner = [...ratedStrategies].sort(
+  const rankedStrategies = [...ratedStrategies].sort(
     (left, right) =>
-      (right.likeRate ?? 0) - (left.likeRate ?? 0) ||
-      right.total - left.total,
-  )[0];
+      (right.positiveRate ?? -1) - (left.positiveRate ?? -1) ||
+      right.impressions - left.impressions,
+  );
+  const winner =
+    rankedStrategies.length === 2 &&
+    (rankedStrategies[0].positiveRate ?? 0) >
+      (rankedStrategies[1].positiveRate ?? 0)
+      ? rankedStrategies[0]
+      : undefined;
 
   return (
     <main className="min-h-dvh bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-4 py-8 text-zinc-100 sm:px-8">
@@ -72,8 +81,9 @@ export default async function RecommendationStatsPage() {
               Recommendation experiment
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
-              Compare up to five song-seeded and five neighborhood-seeded
-              results mixed into each discovery run.
+              Compare song-seeded and neighborhood-seeded results. New users
+              get an even split; enough feedback can shift future runs to 7/3,
+              with regular 5/5 exploration runs preserved.
             </p>
           </div>
           <Link
@@ -84,11 +94,12 @@ export default async function RecommendationStatsPage() {
           </Link>
         </header>
 
-        <section className="grid gap-3 py-6 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-3 py-6 sm:grid-cols-2 lg:grid-cols-5">
           {[
+            ["Impressions", dashboard.overview.impressions.toLocaleString()],
             ["Ratings", dashboard.overview.total.toLocaleString()],
-            ["Liked", dashboard.overview.liked.toLocaleString()],
-            ["Overall like rate", percentage(dashboard.overview.likeRate)],
+            ["Rating rate", percentage(dashboard.overview.ratingRate)],
+            ["Liked / shown", percentage(dashboard.overview.positiveRate)],
             ["Listeners", dashboard.overview.uniqueUsers.toLocaleString()],
           ].map(([label, value]) => (
             <div
@@ -111,8 +122,10 @@ export default async function RecommendationStatsPage() {
               </h2>
               <p className="mt-1 text-xs text-zinc-500">
                 {winner
-                  ? `${strategyName(winner.strategy)} currently has the highest like rate.`
-                  : "Waiting for the first recommendation ratings."}
+                  ? `${strategyName(winner.strategy)} currently produces the most likes per impression.`
+                  : ratedStrategies.length === 2
+                    ? "No clear leader yet; the strategies are tied."
+                    : "Waiting for recommendation impressions and ratings."}
               </p>
             </div>
             {dashboard.overview.updatedAt && (
@@ -132,20 +145,35 @@ export default async function RecommendationStatsPage() {
                     {strategyName(strategy.strategy)}
                   </h3>
                   <p className="text-3xl font-semibold tabular-nums text-green-400">
-                    {percentage(strategy.likeRate)}
+                    {percentage(strategy.positiveRate)}
                   </p>
                 </div>
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-900">
                   <div
                     className="h-full rounded-full bg-green-500"
-                    style={{ width: `${(strategy.likeRate ?? 0) * 100}%` }}
+                    style={{ width: `${(strategy.positiveRate ?? 0) * 100}%` }}
                   />
                 </div>
-                <dl className="mt-4 grid grid-cols-3 gap-3 text-xs">
+                <p className="mt-2 text-[11px] text-zinc-600">
+                  Likes per impression
+                </p>
+                <dl className="mt-4 grid grid-cols-5 gap-3 text-xs">
+                  <div>
+                    <dt className="text-zinc-600">Shown</dt>
+                    <dd className="mt-1 tabular-nums text-zinc-300">
+                      {strategy.impressions}
+                    </dd>
+                  </div>
                   <div>
                     <dt className="text-zinc-600">Ratings</dt>
                     <dd className="mt-1 tabular-nums text-zinc-300">
                       {strategy.total}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Rated</dt>
+                    <dd className="mt-1 tabular-nums text-zinc-300">
+                      {percentage(strategy.ratingRate)}
                     </dd>
                   </div>
                   <div>

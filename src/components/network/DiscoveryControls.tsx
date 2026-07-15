@@ -5,6 +5,7 @@ interface DiscoveryControlsProps {
   eventCount: number;
   exploration: ExplorationMode;
   hasRestored: boolean;
+  isLoading: boolean;
   onChange: (mode: ExplorationMode) => void;
   onReset: () => void;
 }
@@ -13,6 +14,7 @@ export default function DiscoveryControls({
   eventCount,
   exploration,
   hasRestored,
+  isLoading,
   onChange,
   onReset,
 }: DiscoveryControlsProps) {
@@ -23,7 +25,7 @@ export default function DiscoveryControls({
         <select
           aria-label="Discovery range"
           className="rounded-full bg-transparent px-2 py-1 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-green-500"
-          disabled={!hasRestored}
+          disabled={!hasRestored || isLoading}
           value={exploration}
           onChange={(event) =>
             onChange(event.target.value as ExplorationMode)
@@ -38,7 +40,8 @@ export default function DiscoveryControls({
         <button
           type="button"
           onClick={onReset}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-zinc-500 hover:bg-white/10 hover:text-white"
+          disabled={isLoading}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-zinc-500 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Reset discovery history"
           title="Clear local discovery history and dismissed songs"
         >

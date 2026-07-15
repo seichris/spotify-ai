@@ -6,6 +6,7 @@ import type {
   DiscoveryScope,
   DiscoveryTrackSummary,
   ExplorationMode,
+  RecommendationLearningProfile,
   SongGraphEdgeAttributes,
   SongGraphNodeAttributes,
 } from "@/types/network";
@@ -15,6 +16,8 @@ interface CreateDiscoveryContextOptions {
   dismissedTrackIds?: string[];
   exploration?: ExplorationMode;
   graph: Graph<SongGraphNodeAttributes, SongGraphEdgeAttributes>;
+  learningProfile?: RecommendationLearningProfile;
+  resultLimit?: number;
   scope: DiscoveryScope;
   selectedTrackId?: string | null;
   tracks: EnrichedTrack[];
@@ -61,6 +64,8 @@ export const createDiscoveryContext = ({
   dismissedTrackIds = [],
   exploration = "balanced",
   graph,
+  learningProfile,
+  resultLimit,
   scope,
   selectedTrackId,
   tracks,
@@ -107,9 +112,16 @@ export const createDiscoveryContext = ({
   return {
     anchorTracks,
     clusterLabel: scope === "cluster" ? cluster?.label : undefined,
-    dismissedTrackIds: Array.from(new Set(dismissedTrackIds)).slice(0, 500),
+    dismissedTrackIds: Array.from(
+      new Set([
+        ...(learningProfile?.rejectedTrackIds ?? []),
+        ...dismissedTrackIds,
+      ]),
+    ).slice(0, 500),
     existingTrackIds: Array.from(tracksById.keys()),
     exploration,
+    learningProfile,
+    resultLimit,
     scope,
     seedTracks,
     topGenres: topGenresFor(anchorTracks),

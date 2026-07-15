@@ -8,6 +8,7 @@ import {
     createPlaylistAction,
     getGeminiVibeMetadataAction,
     getMapDiscoveryCandidatesAction,
+    getRecommendationLearningProfileAction,
     replacePlaylistTracksAction,
 } from "@/app/actions";
 import { estimateGeminiCost } from "@/lib/geminiPricing";
@@ -527,6 +528,7 @@ export function useVibePlaylists() {
                             events: discoverySession.events,
                             exploration: discoverySession.exploration,
                             fetchCandidates: getMapDiscoveryCandidatesAction,
+                            fetchLearningProfile: getRecommendationLearningProfileAction,
                             graph: discoveryGraph,
                             likedTracks,
                             selectedTrackId: activeCluster.representativeTrackId,

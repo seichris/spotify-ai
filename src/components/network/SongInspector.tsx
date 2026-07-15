@@ -104,7 +104,8 @@ export default function SongInspector({
             <button
               type="button"
               onClick={() => onPlaySong(activeTrack)}
-              className="inline-flex items-center gap-2 rounded-full bg-green-500 px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-green-400"
+              disabled={Boolean(candidate && isDiscovering)}
+              className="inline-flex items-center gap-2 rounded-full bg-green-500 px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-green-400 disabled:opacity-50"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               Play song
@@ -127,6 +128,7 @@ export default function SongInspector({
                   type="button"
                   onClick={() => onSaveCandidate(candidate)}
                   disabled={
+                    isDiscovering ||
                     candidateSaveState === "saving" ||
                     candidateSaveState === "saved" ||
                     candidateSaveState === "reauthorize"
@@ -149,7 +151,8 @@ export default function SongInspector({
                 <button
                   type="button"
                   onClick={() => onAddCandidateToPlaylist(candidate)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10"
+                  disabled={isDiscovering}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
                 >
                   <ListPlus className="h-3.5 w-3.5" /> Endless Songs Playlist
                 </button>
@@ -158,7 +161,8 @@ export default function SongInspector({
                 <button
                   type="button"
                   onClick={() => onDismissCandidate(candidate.track.id)}
-                  className="rounded-full px-3 py-1.5 text-xs text-zinc-500 hover:bg-white/10 hover:text-white"
+                  disabled={isDiscovering}
+                  className="rounded-full px-3 py-1.5 text-xs text-zinc-500 hover:bg-white/10 hover:text-white disabled:opacity-50"
                 >
                   Dismiss
                 </button>

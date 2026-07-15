@@ -112,10 +112,62 @@ export type RecommendationFeedbackState =
 
 export interface RecommendationStrategyStats {
   disliked: number;
+  impressions: number;
   liked: number;
   likeRate: number | null;
+  positiveRate: number | null;
+  ratingRate: number | null;
   strategy: RecommendationStrategy;
   total: number;
+}
+
+export interface RecommendationStrategyLearningStats {
+  disliked: number;
+  impressions: number;
+  liked: number;
+  strategy: RecommendationStrategy;
+}
+
+export interface RecommendationLearningProfile {
+  artistAffinities: Record<string, number>;
+  artistNames: Record<string, string>;
+  avoidedArtists: string[];
+  avoidedGenres: string[];
+  energyFitWeight: number;
+  genreAffinities: Record<string, number>;
+  noveltyWeight: number;
+  preferredArtists: string[];
+  preferredGenres: string[];
+  rejectedTrackIds: string[];
+  sampleSize: number;
+  strategies: RecommendationStrategyLearningStats[];
+  tempoFitWeight: number;
+}
+
+export interface RecommendationImpressionFeatures {
+  artistIds: string[];
+  artistNames: string[];
+  energy: number | null;
+  energyFit: number | null;
+  genres: string[];
+  knownArtist: boolean;
+  mapScore: number;
+  model: string;
+  promptVersion: string;
+  resolutionConfidence: number;
+  seedTrackIds: string[];
+  tempo: number | null;
+  tempoFit: number | null;
+  trackName: string;
+}
+
+export interface RecommendationImpression {
+  exploration: ExplorationMode;
+  features: RecommendationImpressionFeatures;
+  rank: number;
+  recommendationId: string;
+  strategy: RecommendationStrategy;
+  trackId: string;
 }
 
 export type DiscoveryEventType =
@@ -153,6 +205,8 @@ export interface DiscoveryContext {
   dismissedTrackIds: string[];
   existingTrackIds: string[];
   exploration: ExplorationMode;
+  learningProfile?: RecommendationLearningProfile;
+  resultLimit?: number;
   scope: DiscoveryScope;
   seedTracks: DiscoveryTrackSummary[];
   topGenres: string[];
@@ -189,6 +243,8 @@ export interface DiscoveryProposal {
 export interface ResolvedDiscoverySuggestion {
   proposal: DiscoveryProposal;
   recommendationId: string;
+  recommendationModel?: string;
+  recommendationPromptVersion?: string;
   resolutionConfidence: number;
   track: EnrichedTrack;
 }
