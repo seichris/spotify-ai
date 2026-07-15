@@ -5,7 +5,7 @@ import { useVibePlaylists } from "@/hooks/useVibePlaylists";
 import { usePlayer } from "@/components/PlayerProvider";
 import { Button } from "@/components/ui/Button";
 import SongNetwork from "@/components/SongNetwork";
-import { AudioWaveform, Globe, Loader2, Pause, Play, SkipBack, SkipForward, Sparkles, X } from "lucide-react";
+import { AudioWaveform, Globe, Loader2, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import { SpotifyTrack } from "@/lib/spotify";
@@ -353,11 +353,8 @@ export default function Dashboard() {
                     </div>
                 ) : viewMode === "sort" ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 animate-in fade-in duration-500">
-                        <div className="p-4 bg-zinc-900/50 rounded-full">
-                            <Sparkles className="w-8 h-8 text-purple-400" />
-                        </div>
                         <div className="max-w-xl space-y-2">
-                            <h2 className="text-xl font-bold">AI Playlist Sorter</h2>
+                            <h2 className="text-xl font-bold">Create Vibe Playlists</h2>
                             <p className="text-zinc-400 leading-relaxed">
                                 Build playlists from your largest Music Map neighborhoods, each with up to 10 new discoveries.
                             </p>
