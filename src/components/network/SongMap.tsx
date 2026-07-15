@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 
 export interface SongMapProps {
+  libraryProgress: number;
   onCandidateSaved?: (track: EnrichedTrack) => void;
   onPlaySong?: (track: EnrichedTrack) => boolean | Promise<boolean>;
   songs: EnrichedTrack[];
@@ -43,9 +44,14 @@ export default function SongMap(props: SongMapProps) {
   }
 
   if (!MapClient) {
+    const normalizedProgress = Math.max(
+      0,
+      Math.min(100, Math.round(props.libraryProgress)),
+    );
+
     return (
       <div role="status" className="flex h-dvh items-center justify-center bg-zinc-950 text-sm text-zinc-500">
-        Starting WebGL map…
+        Starting WebGL map… {normalizedProgress}%
       </div>
     );
   }

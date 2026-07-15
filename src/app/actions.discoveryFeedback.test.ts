@@ -35,7 +35,10 @@ vi.mock("@/lib/recommendationFeedback", () => ({
   recordRecommendationFeedback: vi.fn(),
 }));
 
-import { getMapDiscoveryCandidatesAction } from "@/app/actions";
+import {
+  getGeminiVibeMetadataAction,
+  getMapDiscoveryCandidatesAction,
+} from "@/app/actions";
 
 const context: DiscoveryContext = {
   anchorTracks: [
@@ -126,5 +129,32 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
       trackId: "track-123",
       userId: "owner-123",
     });
+  });
+});
+
+describe("getGeminiVibeMetadataAction", () => {
+  it("uses structured generation only to name and describe the neighborhood", async () => {
+    mocks.generateStructuredSongSuggestions.mockResolvedValueOnce({
+      data: {
+        vibeDescription: "Dreamy guitars and soft-focus pop textures.",
+        vibeName: "Soft Focus",
+      },
+      model: "test-model",
+      usageMetadata: {},
+    });
+
+    const result = await getGeminiVibeMetadataAction(
+      "Music Map neighborhood: Dream Pop / Shoegaze",
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      vibeDescription: "Dreamy guitars and soft-focus pop textures.",
+      vibeName: "Soft Focus",
+    });
+    expect(mocks.generateStructuredSongSuggestions).toHaveBeenCalledWith(
+      expect.stringContaining("Do not recommend songs"),
+      expect.any(Object),
+    );
   });
 });

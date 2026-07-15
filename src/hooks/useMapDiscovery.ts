@@ -11,7 +11,7 @@ import {
 } from "@/app/actions";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import type { SongGraph } from "@/lib/network/buildGraph";
-import { createDiscoveryContext } from "@/lib/network/discoveryContext";
+import { discoverMixedCandidates } from "@/lib/network/discoverMixedCandidates";
 import {
   clearDiscoverySession,
   createDiscoverySessionState,
@@ -19,8 +19,6 @@ import {
   rerankDiscoveryCandidates,
   writeDiscoverySession,
 } from "@/lib/network/discoveryFeedback";
-import { mixDiscoveryCandidates } from "@/lib/network/mixDiscoveryCandidates";
-import { scoreDiscoveryCandidates } from "@/lib/network/scoreDiscoveryCandidates";
 import type {
   CandidateSaveState,
   DiscoveryCandidate,
@@ -31,7 +29,6 @@ import type {
   RecommendationFeedbackState,
   RecommendationStrategy,
   RecommendationStrategyStats,
-  ResolvedDiscoverySuggestion,
 } from "@/types/network";
 
 const DISCOVERY_PLAYLIST_KEY = "vibe_map_playlist_v2";
@@ -209,39 +206,15 @@ export const useMapDiscovery = (
       setFeedbackError(null);
 
       try {
-        const contexts = (["song", "neighborhood"] as const).map((scope) =>
-          createDiscoveryContext({
-            dismissedTrackIds,
-            exploration,
-            graph,
-            scope,
-            selectedTrackId,
-            tracks: likedTracks,
-          }),
-        );
-        const rankedByStrategy = await Promise.all(
-          contexts.map(async (context) => {
-            const result = await getMapDiscoveryCandidatesAction(context);
-            if (!result.success || !("suggestions" in result)) {
-              throw new Error(result.error ?? "Discovery failed.");
-            }
-            const scored = scoreDiscoveryCandidates(
-              result.suggestions as ResolvedDiscoverySuggestion[],
-              likedTracks,
-              context,
-            );
-            return rerankDiscoveryCandidates(
-              scored,
-              likedTracks,
-              exploration,
-              events,
-            ).slice(0, 5);
-          }),
-        );
-        const ranked = mixDiscoveryCandidates(
-          rankedByStrategy[0],
-          rankedByStrategy[1],
-        );
+        const ranked = await discoverMixedCandidates({
+          dismissedTrackIds,
+          events,
+          exploration,
+          fetchCandidates: getMapDiscoveryCandidatesAction,
+          graph,
+          likedTracks,
+          selectedTrackId: selectedTrackId ?? "",
+        });
         if (ranked.length === 0) {
           throw new Error("No new Spotify matches survived validation.");
         }

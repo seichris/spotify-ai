@@ -81,6 +81,7 @@ function MapEvents({ onHover, onSelect, tracksById }: MapEventsProps) {
 }
 
 export default function SongMapClient({
+  libraryProgress,
   onCandidateSaved,
   onPlaySong,
   songs,
@@ -147,11 +148,38 @@ export default function SongMapClient({
     hoveredTrack && tracksById.has(hoveredTrack.id) ? hoveredTrack : null;
   const validSelectedTrack =
     selectedTrack && tracksById.has(selectedTrack.id) ? selectedTrack : null;
+  const normalizedLibraryProgress = Math.max(
+    0,
+    Math.min(100, Math.round(libraryProgress)),
+  );
 
   if (songs.length === 0) {
     return (
-      <div className="flex h-dvh w-full items-center justify-center bg-gradient-to-br from-zinc-950 via-black to-zinc-900 text-sm text-zinc-500">
-        Loading your liked songs…
+      <div
+        className="flex h-dvh w-full items-center justify-center bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-6"
+        role="status"
+      >
+        <div className="w-full max-w-xs">
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <span className="text-zinc-400">Loading your liked songs…</span>
+            <span className="tabular-nums text-zinc-500">
+              {normalizedLibraryProgress}%
+            </span>
+          </div>
+          <div
+            aria-label="Liked songs loading progress"
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={normalizedLibraryProgress}
+            className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800"
+            role="progressbar"
+          >
+            <div
+              className="h-full rounded-full bg-green-500 transition-[width] duration-300"
+              style={{ width: `${normalizedLibraryProgress}%` }}
+            />
+          </div>
+        </div>
       </div>
     );
   }

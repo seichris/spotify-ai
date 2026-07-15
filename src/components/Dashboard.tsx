@@ -5,7 +5,7 @@ import { useVibePlaylists } from "@/hooks/useVibePlaylists";
 import { usePlayer } from "@/components/PlayerProvider";
 import { Button } from "@/components/ui/Button";
 import SongNetwork from "@/components/SongNetwork";
-import { Loader2, Play, SkipBack, Pause, SkipForward, Sparkles } from "lucide-react";
+import { AudioWaveform, Globe, Loader2, Pause, Play, SkipBack, SkipForward, Sparkles, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import { SpotifyTrack } from "@/lib/spotify";
@@ -171,7 +171,7 @@ export default function Dashboard() {
     return (
         <div className={`min-h-screen bg-zinc-950 text-white relative ${viewMode === "network" ? "overflow-hidden" : "p-8 pb-32"}`}>
             {/* Floating Header Navigation */}
-            <div className="fixed top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50 rounded-full border border-white/10 bg-black/75 p-1.5 shadow-xl backdrop-blur-md">
+            <div className="fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-2">
                 {/* <button
                     onClick={() => setViewMode('recommends')}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'recommends' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'}`}
@@ -181,24 +181,30 @@ export default function Dashboard() {
                 <button
                     onClick={() => setViewMode('sort')}
                     disabled={!isFullLibraryLoaded}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'sort' ? 'bg-white text-black shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'} ${!isFullLibraryLoaded ? 'opacity-50 cursor-not-allowed hover:text-zinc-400 hover:bg-transparent' : ''}`}
+                    aria-pressed={viewMode === 'sort'}
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs backdrop-blur-md transition-colors ${viewMode === 'sort' ? 'bg-white/10 text-white' : 'bg-black/70 text-zinc-300 hover:bg-white/5 hover:text-white'} ${!isFullLibraryLoaded ? 'cursor-not-allowed opacity-50 hover:bg-black/70 hover:text-zinc-300' : ''}`}
                 >
+                    <AudioWaveform aria-hidden="true" className="h-3.5 w-3.5" />
                     Vibe Playlists
                 </button>
                 <button
                     onClick={() => setViewMode("network")}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === "network" ? "bg-white text-black shadow-sm" : "text-zinc-400 hover:text-white hover:bg-zinc-900"}`}
+                    aria-pressed={viewMode === "network"}
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs backdrop-blur-md transition-colors ${viewMode === "network" ? "bg-white/10 text-white" : "bg-black/70 text-zinc-300 hover:bg-white/5 hover:text-white"}`}
                 >
-                    Network Map
+                    <Globe aria-hidden="true" className="h-3.5 w-3.5" />
+                    Music Map
                 </button>
                 <button
+                    aria-label="Sign out"
                     onClick={() => {
                         localStorage.removeItem('spotify_library_cache');
                         signOutAction();
                     }}
-                    className="px-4 py-2 rounded-full text-sm font-medium transition-all text-zinc-400 hover:text-white hover:bg-zinc-900"
+                    className="inline-flex rounded-full border border-white/10 bg-black/70 p-1.5 text-zinc-300 backdrop-blur-md transition-colors hover:bg-white/5 hover:text-white"
+                    title="Sign out"
                 >
-                    X
+                    <X aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
             </div>
 
@@ -353,7 +359,7 @@ export default function Dashboard() {
                         <div className="max-w-xl space-y-2">
                             <h2 className="text-xl font-bold">AI Playlist Sorter</h2>
                             <p className="text-zinc-400 leading-relaxed">
-                                Build vibe playlists from your liked songs, then add 10 new tracks that match each vibe.
+                                Build playlists from your largest Music Map neighborhoods, each with up to 10 new discoveries.
                             </p>
                             <p className="text-xs text-zinc-500">
                                 {total > 0 ? `${songs.length} / ${total}` : songs.length} liked songs loaded.
@@ -460,6 +466,7 @@ export default function Dashboard() {
                 ) : (
                     <div className="h-full w-full animate-in fade-in duration-500">
                         <SongNetwork
+                            libraryProgress={progress}
                             songs={isFullLibraryLoaded ? songs : []}
                             onCandidateSaved={promoteSavedTrack}
                             onPlaySong={async (song) => {

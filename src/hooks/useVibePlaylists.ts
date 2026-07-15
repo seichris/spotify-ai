@@ -1,18 +1,28 @@
 "use client";
 
+import Graph from "graphology";
 import { useCallback, useState } from "react";
 import { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import {
     addTracksToPlaylistAction,
     createPlaylistAction,
-    getArtistTopTracksAction,
-    getGeminiVibePlanAction,
-    getUserProfileAction,
+    getGeminiVibeMetadataAction,
+    getMapDiscoveryCandidatesAction,
     replacePlaylistTracksAction,
 } from "@/app/actions";
 import { estimateGeminiCost } from "@/lib/geminiPricing";
+import type { SongGraph } from "@/lib/network/buildGraph";
+import { buildSongGraphClient } from "@/lib/network/buildSongGraphClient";
+import { discoverMixedCandidates } from "@/lib/network/discoverMixedCandidates";
+import { readDiscoverySession } from "@/lib/network/discoveryFeedback";
+import type {
+    ClusterProfile,
+    SongGraphBuildStage,
+    SongGraphEdgeAttributes,
+    SongGraphNodeAttributes,
+} from "@/types/network";
 
-const STATE_KEY = "vibe_playlist_state_v1";
+const STATE_KEY = "vibe_playlist_state_v2";
 const parseEnvInt = (value: string | undefined, fallback: number) => {
     const parsed = Number.parseInt(value ?? "", 10);
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -20,19 +30,19 @@ const parseEnvInt = (value: string | undefined, fallback: number) => {
 const MAX_VIBES = parseEnvInt(process.env.NEXT_PUBLIC_MAX_VIBES, 6);
 const MIN_CLUSTER_SIZE = 6;
 const NEW_SONGS_PER_VIBE = parseEnvInt(process.env.NEXT_PUBLIC_NEW_SONGS_PER_VIBE, 10);
+const GRAPH_STAGE_LABELS: Record<SongGraphBuildStage, string> = {
+    communities: "Finding Music Map neighborhoods",
+    layout: "Preparing neighborhood positions",
+    normalizing: "Normalizing liked songs",
+    ready: "Music Map ready",
+    relationships: "Building song relationships",
+};
 
 interface TrackSummary {
     id: string;
     name: string;
     artists: { id: string; name: string }[];
     genres: string[];
-    uri: string;
-}
-
-interface SpotifyApiTrack {
-    id: string;
-    name: string;
-    artists: { id: string; name: string }[];
     uri: string;
 }
 
@@ -50,7 +60,7 @@ interface VibeProfile {
 }
 
 interface VibeState {
-    version: 1;
+    version: 2;
     analyzedSongIds: string[];
     addedTrackIds: string[];
     songToVibes: Record<string, string[]>;
@@ -66,6 +76,9 @@ interface VibeState {
 
 interface VibeCluster {
     key: string;
+    label: string;
+    mapSize: number;
+    representativeTrackId: string;
     tracks: TrackSummary[];
     genreCounts: Record<string, number>;
     artistCounts: Record<string, number>;
@@ -89,7 +102,7 @@ export interface LibraryPlaylistResult {
 }
 
 const createEmptyState = (): VibeState => ({
-    version: 1,
+    version: 2,
     analyzedSongIds: [],
     addedTrackIds: [],
     songToVibes: {},
@@ -111,7 +124,7 @@ const loadState = (): VibeState => {
     if (!raw) return createEmptyState();
     try {
         const parsed = JSON.parse(raw);
-        if (parsed?.version !== 1) return createEmptyState();
+        if (parsed?.version !== 2) return createEmptyState();
         return {
             ...createEmptyState(),
             ...parsed,
@@ -137,10 +150,8 @@ const toTrackSummary = (track: EnrichedTrack): TrackSummary => ({
     uri: track.uri,
 });
 
-const getPrimaryGenre = (track: TrackSummary) => {
-    if (!track.genres || track.genres.length === 0) return "mixed";
-    return track.genres[0];
-};
+const getPrimaryGenre = (track: TrackSummary) =>
+    track.genres[0] || "mixed";
 
 const increment = (counts: Record<string, number>, key: string) => {
     counts[key] = (counts[key] ?? 0) + 1;
@@ -168,50 +179,46 @@ const getTopKeys = (counts: Record<string, number>, limit: number) =>
         .slice(0, limit)
         .map(([key]) => key);
 
-const buildClusters = (tracks: TrackSummary[]) => {
-    if (tracks.length === 0) return [] as VibeCluster[];
-
-    const buckets: Record<string, TrackSummary[]> = {};
-    tracks.forEach(track => {
-        const key = getPrimaryGenre(track).toLowerCase();
-        if (!buckets[key]) buckets[key] = [];
-        buckets[key].push(track);
-    });
-
-    const clusters = Object.entries(buckets)
-        .map(([key, bucket]) => {
-            const { genreCounts, artistCounts, artistNames } = buildCounts(bucket);
-            return { key, tracks: bucket, genreCounts, artistCounts, artistNames } as VibeCluster;
+const buildMapClusters = (
+    profiles: ClusterProfile[],
+    tracks: TrackSummary[],
+    sourceTrackIds: Set<string>,
+) => {
+    const tracksById = new Map(tracks.map(track => [track.id, track]));
+    const mappedClusters = profiles
+        .flatMap(profile => {
+            const clusterTracks = profile.nodeIds.flatMap(id => {
+                const track = sourceTrackIds.has(id) ? tracksById.get(id) : undefined;
+                return track ? [track] : [];
+            });
+            if (clusterTracks.length === 0) return [];
+            const representativeTrackId =
+                profile.representativeTrackIds.find(id => sourceTrackIds.has(id)) ??
+                clusterTracks[0].id;
+            const { genreCounts, artistCounts, artistNames } = buildCounts(clusterTracks);
+            return [{
+                key: profile.id,
+                label: profile.label,
+                mapSize: profile.nodeIds.length,
+                representativeTrackId,
+                tracks: clusterTracks,
+                genreCounts,
+                artistCounts,
+                artistNames,
+            } satisfies VibeCluster];
         })
-        .sort((a, b) => b.tracks.length - a.tracks.length);
-
-    if (clusters.length <= MAX_VIBES) {
-        return clusters;
-    }
-
-    const selected: VibeCluster[] = [];
-    const mixedTracks: TrackSummary[] = [];
-
-    clusters.forEach(cluster => {
-        if (selected.length < MAX_VIBES - 1 && cluster.tracks.length >= MIN_CLUSTER_SIZE) {
-            selected.push(cluster);
-        } else {
-            mixedTracks.push(...cluster.tracks);
-        }
-    });
-
-    if (mixedTracks.length > 0) {
-        const { genreCounts, artistCounts, artistNames } = buildCounts(mixedTracks);
-        selected.push({
-            key: "mixed",
-            tracks: mixedTracks,
-            genreCounts,
-            artistCounts,
-            artistNames,
-        });
-    }
-
-    return selected;
+        .sort((left, right) =>
+            right.tracks.length - left.tracks.length ||
+            right.mapSize - left.mapSize ||
+            left.key.localeCompare(right.key)
+        );
+    const meaningfulClusters = mappedClusters.filter(
+        cluster => cluster.mapSize >= MIN_CLUSTER_SIZE,
+    );
+    return (meaningfulClusters.length > 0
+        ? meaningfulClusters
+        : mappedClusters.filter(cluster => cluster.mapSize > 1)
+    ).slice(0, MAX_VIBES);
 };
 
 const createSummary = (cluster: VibeCluster) => {
@@ -224,9 +231,8 @@ const createSummary = (cluster: VibeCluster) => {
         .join("; ");
 
     return {
-        summaryText: `Top genres: ${topGenres.join(", ") || "unknown"}\nTop artists: ${topArtists.join(", ") || "unknown"}\nSample liked songs: ${sampleSongs}`,
+        summaryText: `Music Map neighborhood: ${cluster.label}\nTop genres: ${topGenres.join(", ") || "unknown"}\nTop artists: ${topArtists.join(", ") || "unknown"}\nSample liked songs: ${sampleSongs}`,
         topGenres,
-        topArtistIds,
     };
 };
 
@@ -298,6 +304,7 @@ export function useVibePlaylists() {
     const resetState = useCallback(() => {
         if (typeof window === "undefined") return;
         localStorage.removeItem(STATE_KEY);
+        localStorage.removeItem("vibe_playlist_state_v1");
         setSteps([]);
         setResults([]);
         setLibraryResult(null);
@@ -312,9 +319,10 @@ export function useVibePlaylists() {
         setError(null);
 
         try {
-            const likedSongs = songs
-                .filter(track => track.id && track.type === "track" && !track.is_local)
-                .map(toTrackSummary);
+            const likedTracks = songs.filter(
+                track => track.id && track.type === "track" && !track.is_local,
+            );
+            const likedSongs = likedTracks.map(toTrackSummary);
             const likedIds = new Set(likedSongs.map(track => track.id));
 
             if (likedSongs.length === 0) {
@@ -369,14 +377,6 @@ export function useVibePlaylists() {
                 return;
             }
 
-            const profileResult = await getUserProfileAction();
-            if (!profileResult.success || !profileResult.data) {
-                setError("Failed to load Spotify profile.");
-                return;
-            }
-
-            const market = profileResult.data.country || "US";
-
             const assignments = new Map<string, TrackSummary[]>();
             const unassigned: TrackSummary[] = [];
 
@@ -395,9 +395,50 @@ export function useVibePlaylists() {
                 });
             }
 
-            const clusters = hasVibes ? buildClusters(unassigned) : buildClusters(newLikedSongs);
+            const clusterSource = hasVibes ? unassigned : newLikedSongs;
+            const discoverySession = readDiscoverySession();
+            let discoveryGraph: SongGraph | null = null;
+            let clusters: VibeCluster[] = [];
+
+            if (clusterSource.length > 0) {
+                logStep("Preparing Music Map neighborhoods for playlists.");
+                let lastStage: SongGraphBuildStage | null = null;
+                const graphResult = await buildSongGraphClient(
+                    likedTracks,
+                    (stage, progress) => {
+                        if (stage === lastStage) return;
+                        lastStage = stage;
+                        logStep(`${GRAPH_STAGE_LABELS[stage]} (${progress}%).`);
+                    },
+                );
+                const graph = new Graph<
+                    SongGraphNodeAttributes,
+                    SongGraphEdgeAttributes
+                >({ type: "undirected" });
+                graph.import(graphResult.graph);
+                discoveryGraph = graph;
+                clusters = buildMapClusters(
+                    graphResult.clusters,
+                    likedSongs,
+                    new Set(clusterSource.map(track => track.id)),
+                );
+
+                const selectedTrackIds = new Set(
+                    clusters.flatMap(cluster => cluster.tracks.map(track => track.id)),
+                );
+                const skippedTracks = clusterSource.filter(
+                    track => !selectedTrackIds.has(track.id),
+                );
+                skippedTracks.forEach(track => analyzedSet.add(track.id));
+                if (skippedTracks.length > 0) {
+                    logStep(
+                        `Skipped ${skippedTracks.length} songs outside the ${clusters.length} largest coherent neighborhoods.`,
+                    );
+                }
+            }
+
             if (clusters.length > 0) {
-                logStep(`Creating ${clusters.length} new vibe playlist${clusters.length === 1 ? "" : "s"}.`);
+                logStep(`Creating ${clusters.length} Music Map vibe playlist${clusters.length === 1 ? "" : "s"}.`);
             }
 
             const buildResults: PlaylistBuildResult[] = [];
@@ -463,6 +504,13 @@ export function useVibePlaylists() {
                 const { genreCounts, artistCounts, artistNames } = buildCounts(freshTracks);
                 const activeCluster: VibeCluster = {
                     key: cluster.key,
+                    label: cluster.label,
+                    mapSize: cluster.mapSize,
+                    representativeTrackId: freshTracks.some(
+                        track => track.id === cluster.representativeTrackId,
+                    )
+                        ? cluster.representativeTrackId
+                        : freshTracks[0].id,
                     tracks: freshTracks,
                     genreCounts,
                     artistCounts,
@@ -470,7 +518,26 @@ export function useVibePlaylists() {
                 };
 
                 const summary = createSummary(activeCluster);
-                const geminiResult = await getGeminiVibePlanAction(summary.summaryText);
+                logStep(`Finding song and neighborhood discoveries for ${cluster.label}.`);
+                const [geminiResult, discoveredCandidates] = await Promise.all([
+                    getGeminiVibeMetadataAction(summary.summaryText),
+                    discoveryGraph
+                        ? discoverMixedCandidates({
+                            dismissedTrackIds: discoverySession.dismissedTrackIds,
+                            events: discoverySession.events,
+                            exploration: discoverySession.exploration,
+                            fetchCandidates: getMapDiscoveryCandidatesAction,
+                            graph: discoveryGraph,
+                            likedTracks,
+                            selectedTrackId: activeCluster.representativeTrackId,
+                        }).catch(discoveryError => {
+                            logStep(
+                                `Could not add discoveries for ${cluster.label}: ${getErrorMessage(discoveryError, "Discovery failed.")}`,
+                            );
+                            return [];
+                        })
+                        : Promise.resolve([]),
+                ]);
                 const modelName = geminiResult?.model || "unknown";
                 const usage = ensureUsage(modelName);
                 usage.requests += 1;
@@ -485,7 +552,7 @@ export function useVibePlaylists() {
 
                 const rawVibeName = geminiResult.success && geminiResult.vibeName
                     ? geminiResult.vibeName
-                    : `${summary.topGenres[0] || "Mixed"} Vibes`;
+                    : cluster.label;
                 const vibeDescription = geminiResult.success && geminiResult.vibeDescription
                     ? geminiResult.vibeDescription
                     : `Inspired by ${summary.topGenres.slice(0, 3).join(", ") || "your liked songs"}.`;
@@ -494,7 +561,26 @@ export function useVibePlaylists() {
                 const safeVibeName = trimmedVibeName.length > 60
                     ? `${trimmedVibeName.slice(0, 57)}...`
                     : trimmedVibeName;
-                const playlistName = `Gemini Vibe - ${safeVibeName}`.slice(0, 100);
+                const playlistName = `Endlesssongs - ${safeVibeName}`.slice(0, 100);
+
+                const likedUris = activeCluster.tracks
+                    .filter(track => !persistedAddedSet.has(track.id))
+                    .map(track => track.uri);
+
+                const newTracks = dedupeTracks(
+                    discoveredCandidates.map(candidate => toTrackSummary(candidate.track)),
+                )
+                    .filter(track => !likedIds.has(track.id))
+                    .filter(track => !persistedAddedSet.has(track.id))
+                    .filter(track => !runAddedSet.has(track.id))
+                    .slice(0, NEW_SONGS_PER_VIBE);
+                const newUris = newTracks.map(track => track.uri);
+
+                if (newTracks.length === 0) {
+                    logStep(`Skipping ${cluster.label}; no new discoveries survived validation.`);
+                    continue;
+                }
+
                 logStep(`Creating playlist "${playlistName}".`);
 
                 const playlistResult = await createPlaylistAction(playlistName, vibeDescription, false);
@@ -505,50 +591,6 @@ export function useVibePlaylists() {
 
                 const playlistId = playlistResult.data.id as string;
                 const playlistUrl = playlistResult.data.external_urls?.spotify as string | undefined;
-
-                const likedUris = activeCluster.tracks
-                    .filter(track => !persistedAddedSet.has(track.id))
-                    .map(track => track.uri);
-
-                let suggestedTracks: TrackSummary[] = [];
-                if (geminiResult.success && Array.isArray(geminiResult.suggestions)) {
-                    const suggestions = geminiResult.suggestions as SpotifyApiTrack[];
-                    suggestedTracks = suggestions.map(track => ({
-                        id: track.id,
-                        name: track.name,
-                        artists: track.artists,
-                        genres: [],
-                        uri: track.uri,
-                    }));
-                }
-
-                suggestedTracks = dedupeTracks(suggestedTracks)
-                    .filter(track => !likedIds.has(track.id))
-                    .filter(track => !persistedAddedSet.has(track.id));
-
-                if (suggestedTracks.length < NEW_SONGS_PER_VIBE && summary.topArtistIds.length > 0) {
-                    for (const artistId of summary.topArtistIds) {
-                        const topTracksResult = await getArtistTopTracksAction(artistId, market);
-                        if (!topTracksResult.success || !topTracksResult.data) continue;
-                        const topTracks = (topTracksResult.data.tracks || []) as SpotifyApiTrack[];
-                        topTracks.forEach(track => {
-                            if (suggestedTracks.length >= NEW_SONGS_PER_VIBE) return;
-                            if (likedIds.has(track.id) || persistedAddedSet.has(track.id)) return;
-                            if (suggestedTracks.find(item => item.id === track.id)) return;
-                            suggestedTracks.push({
-                                id: track.id,
-                                name: track.name,
-                                artists: track.artists,
-                                genres: [],
-                                uri: track.uri,
-                            });
-                        });
-                        if (suggestedTracks.length >= NEW_SONGS_PER_VIBE) break;
-                    }
-                }
-
-                const newTracks = suggestedTracks.slice(0, NEW_SONGS_PER_VIBE);
-                const newUris = newTracks.map(track => track.uri);
 
                 const allUris = Array.from(new Set([...likedUris, ...newUris]));
                 logStep(`Adding ${likedUris.length} liked + ${newTracks.length} new songs to ${playlistName}.`);
