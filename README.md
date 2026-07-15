@@ -1,52 +1,7 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Endless Songs
 
-## Getting Started
+**Song recommendation with LLMs.**
 
-First, run the development server:
+Turn your Spotify taste into an explorable music map, then discover new songs that match the tracks and vibes you already love.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Features
-
-- Spotify OAuth login and required scopes; login notes Premium is needed for playback. `src/auth.ts` `src/app/login/page.tsx`
-- Loads liked songs, enriches with artist genres, caches in localStorage, supports infinite scroll and "load full library". `src/hooks/useSpotifyLibrary.ts` `src/components/Dashboard.tsx`
-- Per-song "Recommends": click a liked song to get Gemini analysis + similar tracks; cached suggestions; click a suggestion to play. `src/components/Dashboard.tsx` `src/app/actions.ts`
-- AI Playlist Sorter: turns the largest coherent Music Map neighborhoods into vibe playlists, uses Gemini only to name/describe them, and reuses the map's song-plus-neighborhood discovery, validation, scoring, and feedback-aware ranking for new tracks. `src/hooks/useVibePlaylists.ts` `src/lib/network/discoverMixedCandidates.ts` `src/app/actions.ts`
-- Library playlist: creates/updates a single "vibe-ordered" playlist of all liked songs. `src/hooks/useVibePlaylists.ts`
-- Music Map: 2D genre clusters with artist connections and shuffleable layout. `src/components/SongNetwork.tsx`
-- Playback bar using Spotify Web Playback SDK (play/pause/skip). `src/hooks/useSpotifyPlayer.ts` `src/components/Dashboard.tsx`
-
-## Gemini limits
-
-- Per-song requests send only the song name + artist; prompt asks for 5-10 similar songs. No explicit hard cap or token limit is set in code. `src/app/actions.ts` `src/lib/gemini.ts`
-- Vibe metadata requests send a summary capped to the map label, top 6 genres, top 6 artists, and up to 12 sample liked songs per neighborhood. `src/hooks/useVibePlaylists.ts`
-- Playlist creation is capped by `MAX_VIBES = 6`, skips incoherent islands, and mixes up to five song-seed plus five neighborhood-seed discoveries per playlist. `src/hooks/useVibePlaylists.ts` `src/lib/network/discoverMixedCandidates.ts`
+![Endless Songs Music Map](public/endless-songs-music-map.png)
