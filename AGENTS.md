@@ -32,3 +32,6 @@
 ## Configuration & Secrets
 - Copy `.env.example` to `.env.local` and fill in Spotify, Gemini, and NextAuth secrets.
 - Never commit real credentials; use placeholder values in docs and examples.
+
+## External Dashboards
+- Spotify Developer Dashboard: https://developer.spotify.com/dashboard

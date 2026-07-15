@@ -2,6 +2,11 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { getLibraryEnrichmentAction, getLikedSongsAction, getUserProfileAction, signOutAction } from "@/app/actions";
+import {
+    compactLibraryTrack,
+    LIBRARY_CACHE_KEY,
+    persistLibraryCache,
+} from "@/lib/libraryCache";
 import { SpotifyTrack } from "@/lib/spotify";
 import type { TrackAudioFeatures } from "@/types/audio";
 
@@ -41,22 +46,33 @@ export function useSpotifyLibrary() {
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const locallyPromotedIds = useRef(new Set<string>());
+    const libraryCacheDisabled = useRef(false);
 
     const BATCH_SIZE = 50;
-    const LIBRARY_CACHE_KEY = 'spotify_library_cache_v2';
 
-    // Save to cache whenever state changes
+    // Persist only settled state; saving every loading increment is quadratic.
     useEffect(() => {
-        if (songs.length > 0) {
-            localStorage.setItem(LIBRARY_CACHE_KEY, JSON.stringify({
+        if (
+            songs.length > 0 &&
+            !isLoading &&
+            !isLoadingMore &&
+            !libraryCacheDisabled.current
+        ) {
+            const persisted = persistLibraryCache(localStorage, {
+                hasMore,
+                offset,
                 songs,
                 total,
-                offset,
-                hasMore,
-                timestamp: Date.now()
-            }));
+                timestamp: Date.now(),
+            });
+            if (!persisted) {
+                libraryCacheDisabled.current = true;
+                console.warn(
+                    "Liked-song cache exceeded browser storage; continuing without it.",
+                );
+            }
         }
-    }, [songs, total, offset, hasMore]);
+    }, [hasMore, isLoading, isLoadingMore, offset, songs, total]);
 
     const fetchTracksAndEnrich = async (currentOffset: number, currentLimit: number) => {
         // 1. Fetch Liked Songs
@@ -119,11 +135,11 @@ export function useSpotifyLibrary() {
                 .sort((a, b) => b[1] - a[1])
                 .map(([genre]) => genre);
 
-            return {
+            return compactLibraryTrack({
                 ...track,
                 features: audioFeatures.get(track.id) ?? null,
                 genres: sortedGenres
-            };
+            });
         });
 
         return { tracks: enrichedTracks, total: result.data.total };
@@ -151,7 +167,7 @@ export function useSpotifyLibrary() {
                 try {
                     const { songs: cachedSongs, total: cachedTotal, offset: cachedOffset, hasMore: cachedHasMore } = JSON.parse(cached);
                     if (cachedSongs && cachedSongs.length > 0) {
-                        setSongs(cachedSongs);
+                        setSongs((cachedSongs as EnrichedTrack[]).map(compactLibraryTrack));
                         setTotal(cachedTotal);
                         setOffset(cachedOffset);
                         setHasMore(cachedHasMore);
@@ -230,13 +246,16 @@ export function useSpotifyLibrary() {
                 try {
                     const { songs: cachedSongs, total: cachedTotal, hasMore: cachedHasMore } = JSON.parse(cached);
                     if (cachedSongs && cachedSongs.length > 0 && cachedHasMore === false) {
-                        setSongs(cachedSongs);
+                        const compactCachedSongs = (cachedSongs as EnrichedTrack[]).map(
+                            compactLibraryTrack,
+                        );
+                        setSongs(compactCachedSongs);
                         setTotal(cachedTotal);
-                        setOffset(cachedSongs.length);
+                        setOffset(compactCachedSongs.length);
                         setHasMore(false);
                         setIsLoading(false);
                         setProgress(100);
-                        return cachedSongs as EnrichedTrack[];
+                        return compactCachedSongs;
                     }
                 } catch (e) {
                     console.error("Failed to parse library cache", e);
@@ -283,12 +302,13 @@ export function useSpotifyLibrary() {
     }, []);
 
     const promoteSavedTrack = useCallback((track: EnrichedTrack) => {
-        if (locallyPromotedIds.current.has(track.id)) return;
-        locallyPromotedIds.current.add(track.id);
+        const compactTrack = compactLibraryTrack(track);
+        if (locallyPromotedIds.current.has(compactTrack.id)) return;
+        locallyPromotedIds.current.add(compactTrack.id);
         setSongs((current) =>
-            current.some((song) => song.id === track.id)
+            current.some((song) => song.id === compactTrack.id)
                 ? current
-                : [track, ...current],
+                : [compactTrack, ...current],
         );
         setTotal((current) => current + 1);
         setOffset((current) => current + 1);
