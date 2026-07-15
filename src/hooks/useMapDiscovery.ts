@@ -31,7 +31,7 @@ import type {
   RecommendationStrategyStats,
 } from "@/types/network";
 
-const DISCOVERY_PLAYLIST_KEY = "vibe_map_playlist_v2";
+const DISCOVERY_PLAYLIST_KEY = "endless_songs_playlist_v1";
 
 interface DiscoveryRequest {
   selectedTrackId?: string | null;
@@ -363,8 +363,8 @@ export const useMapDiscovery = (
         let playlist = loadPlaylistReference();
         if (!playlist) {
           const created = await createPlaylistAction(
-            "Vibe Map Playlist",
-            "Songs discovered from the Spotify similarity map.",
+            "Endless Songs",
+            "Songs discovered from the Endless Songs Music Map.",
             false,
           );
           if (!created.success || !created.data?.id) {

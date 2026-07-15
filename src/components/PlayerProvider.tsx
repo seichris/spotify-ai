@@ -8,7 +8,7 @@ interface PlayerContextType {
     isPaused: boolean;
     isActive: boolean;
     currentTrack: SpotifyTrackInfo | null;
-    playTrack: (uri: string) => Promise<void>;
+    playTrack: (uri: string, queuedUris?: string[]) => Promise<void>;
     deviceId: string | null;
     togglePlay: () => void;
     nextTrack: () => void;

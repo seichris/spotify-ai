@@ -20,11 +20,12 @@ import NeighborhoodHighlight from "@/components/network/NeighborhoodHighlight";
 import SongInspector from "@/components/network/SongInspector";
 import { useMapDiscovery } from "@/hooks/useMapDiscovery";
 import { useSongGraph } from "@/hooks/useSongGraph";
+import { buildPlaybackQueue } from "@/lib/network/buildPlaybackQueue";
 import { buildPreviewGraph } from "@/lib/network/buildPreviewGraph";
 import { placeCandidates } from "@/lib/network/placeCandidates";
 import type { SongMapProps } from "@/components/network/SongMap";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
-import type { ClusterProfile } from "@/types/network";
+import type { ClusterProfile, DiscoveryCandidate } from "@/types/network";
 
 const SIGMA_SETTINGS = {
   allowInvalidContainer: false,
@@ -91,7 +92,7 @@ export default function SongMapClient({
   const [selectedCluster, setSelectedCluster] = useState<ClusterProfile | null>(
     null,
   );
-  const { currentTrack, isPaused, togglePlay } = usePlayer();
+  const { currentTrack, isPaused, playTrack, togglePlay } = usePlayer();
   const previewGraph = useMemo(() => buildPreviewGraph(songs), [songs]);
   const {
     clusters,
@@ -196,6 +197,24 @@ export default function SongMapClient({
   const selectedCandidate = validSelectedTrack
     ? candidateById.get(validSelectedTrack.id)
     : undefined;
+  const playDiscoveryCandidate = async (candidate: DiscoveryCandidate) => {
+    const playbackUris = buildPlaybackQueue(
+      discovery.candidates.map((item) => item.track),
+      candidate.track.id,
+    );
+
+    try {
+      await playTrack(candidate.track.uri, playbackUris.slice(1));
+      discovery.previewCandidate(candidate);
+      return true;
+    } catch (playbackError) {
+      console.error(
+        "Could not start the Nearby discoveries queue",
+        playbackError,
+      );
+      return false;
+    }
+  };
 
   return (
     <div
@@ -332,14 +351,11 @@ export default function SongMapClient({
             })
           }
           onPlaySong={
-            onPlaySong
+            onPlaySong || selectedCandidate
               ? async (track) => {
-                  const started = await onPlaySong(track);
                   const candidate = candidateById.get(track.id);
-                  if (candidate && started !== false) {
-                    discovery.previewCandidate(candidate);
-                  }
-                  return started;
+                  if (candidate) return playDiscoveryCandidate(candidate);
+                  return onPlaySong ? onPlaySong(track) : false;
                 }
               : undefined
           }
@@ -399,9 +415,7 @@ export default function SongMapClient({
         }}
         onFeedback={discovery.recordFeedback}
         onPlay={async (candidate) => {
-          if (!onPlaySong) return;
-          const started = await onPlaySong(candidate.track);
-          if (started !== false) discovery.previewCandidate(candidate);
+          await playDiscoveryCandidate(candidate);
         }}
         onSave={discovery.saveCandidate}
         onSelect={(candidate) => {

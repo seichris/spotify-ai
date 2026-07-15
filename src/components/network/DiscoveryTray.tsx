@@ -249,12 +249,12 @@ export default function DiscoveryTray({
                 >
                   <ListPlus className="h-3 w-3" />
                   {playlistState === "added"
-                    ? "In Vibe Map Playlist"
+                    ? "In Endless Songs Playlist"
                     : playlistState === "adding"
                       ? "Adding…"
                       : playlistState === "error"
-                        ? "Retry Vibe Map Playlist"
-                        : "Vibe Map Playlist"}
+                        ? "Retry Endless Songs Playlist"
+                        : "Endless Songs Playlist"}
                 </button>
                 {!isSaved && (
                   <button
