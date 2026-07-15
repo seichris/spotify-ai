@@ -6,7 +6,7 @@
 - `src/hooks`, `src/lib`, and `src/types` are for reusable logic, helpers, and shared TypeScript types.
 - `src/auth.ts` centralizes NextAuth configuration.
 - `public` stores static assets served at the site root.
-- `spotify-web-api-endpoints` is a local reference file for Spotify API endpoints and deprecations.
+- `docs/spotify-web-api-endpoints.md` is a local reference file for Spotify API endpoints and deprecations.
 
 ## Build, Test, and Development Commands
 - `npm run dev`: start the local Next.js dev server at `http://localhost:3000`.

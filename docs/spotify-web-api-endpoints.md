@@ -1,3 +1,5 @@
+# Spotify Web API endpoints
+
 Based on the official Spotify Web API documentation and the extensive changes announced on **November 27, 2024**, here is the complete list of endpoints.
 
 > **⚠️ Important Note on Deprecations (Effective Nov 2024):**
