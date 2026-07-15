@@ -138,6 +138,7 @@ export interface RecommendationLearningProfile {
   noveltyWeight: number;
   preferredArtists: string[];
   preferredGenres: string[];
+  rejectedTrackIds: string[];
   sampleSize: number;
   strategies: RecommendationStrategyLearningStats[];
   tempoFitWeight: number;

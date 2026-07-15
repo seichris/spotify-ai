@@ -9,7 +9,7 @@ import type {
   RecommendationLearningProfile,
 } from "@/types/network";
 
-export const DISCOVERY_SESSION_SCHEMA_VERSION = 2;
+export const DISCOVERY_SESSION_SCHEMA_VERSION = 3;
 export const DISCOVERY_SESSION_STORAGE_KEY = "song_map_discovery_session_v2";
 
 const EXPLORATION_MODES = new Set<ExplorationMode>([
@@ -151,9 +151,12 @@ export const parseDiscoverySession = (
 
   try {
     const value = JSON.parse(serialized) as unknown;
+    const isLegacySession =
+      isRecord(value) && value.schemaVersion === 2;
     if (
       !isRecord(value) ||
-      value.schemaVersion !== DISCOVERY_SESSION_SCHEMA_VERSION ||
+      (value.schemaVersion !== DISCOVERY_SESSION_SCHEMA_VERSION &&
+        !isLegacySession) ||
       !Array.isArray(value.candidates) ||
       !value.candidates.every(isCandidate) ||
       !isStringArray(value.dismissedTrackIds) ||
@@ -168,14 +171,14 @@ export const parseDiscoverySession = (
     }
 
     return {
-      candidates: value.candidates.slice(0, 12),
+      candidates: isLegacySession ? [] : value.candidates.slice(0, 12),
       dismissedTrackIds: Array.from(
         new Set(value.dismissedTrackIds.slice(0, 500)),
       ),
       events: value.events.slice(-500),
       exploration: value.exploration as ExplorationMode,
       schemaVersion: DISCOVERY_SESSION_SCHEMA_VERSION,
-      summary: value.summary.slice(0, 1200),
+      summary: isLegacySession ? "" : value.summary.slice(0, 1200),
       updatedAt: value.updatedAt,
     };
   } catch {

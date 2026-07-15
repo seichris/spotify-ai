@@ -54,6 +54,10 @@ describe("buildRecommendationLearningProfile", () => {
         { impressions: 20, strategy: "neighborhood" },
       ],
       now,
+      [
+        { track_id: "rejected-track" },
+        { track_id: "rejected-track" },
+      ],
     );
 
     expect(profile).toMatchObject({
@@ -61,6 +65,7 @@ describe("buildRecommendationLearningProfile", () => {
       avoidedGenres: ["techno"],
       preferredArtists: ["Dream Artist"],
       preferredGenres: ["dream pop"],
+      rejectedTrackIds: ["rejected-track"],
       sampleSize: 2,
       strategies: [
         { disliked: 2, impressions: 20, liked: 8, strategy: "song" },
@@ -94,5 +99,46 @@ describe("buildRecommendationLearningProfile", () => {
 
     expect(profile.artistAffinities["artist-a"]).toBeGreaterThan(0.7);
     expect(profile.genreAffinities["dream pop"]).toBeGreaterThan(0.7);
+  });
+
+  it("reduces the strength of a sparse old preference", () => {
+    const now = Date.parse("2026-07-15T00:00:00.000Z");
+    const profile = buildRecommendationLearningProfile(
+      [
+        {
+          feedback: 1,
+          features: features("artist-recent", "Recent Artist", ["recent pop"]),
+          updated_at: new Date(now).toISOString(),
+        },
+        {
+          feedback: 1,
+          features: features("artist-old", "Old Artist", ["old pop"]),
+          updated_at: new Date(now - 179 * 86_400_000).toISOString(),
+        },
+      ],
+      [],
+      [],
+      now,
+    );
+
+    expect(profile.artistAffinities["artist-recent"]).toBe(1);
+    expect(profile.artistAffinities["artist-old"]).toBeLessThan(0.15);
+    expect(profile.preferredArtists).toEqual(["Recent Artist"]);
+    expect(profile.preferredGenres).toEqual(["recent pop"]);
+    const oldOnly = buildRecommendationLearningProfile(
+      [
+        {
+          feedback: 1,
+          features: features("artist-old", "Old Artist", ["old pop"]),
+          updated_at: new Date(now - 179 * 86_400_000).toISOString(),
+        },
+      ],
+      [],
+      [],
+      now,
+    );
+    expect(oldOnly.energyFitWeight).toBeLessThan(0.1);
+    expect(oldOnly.noveltyWeight).toBeLessThan(0.15);
+    expect(oldOnly.tempoFitWeight).toBeLessThan(0.12);
   });
 });

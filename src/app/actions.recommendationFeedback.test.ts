@@ -28,6 +28,7 @@ describe("recordRecommendationFeedbackAction", () => {
     vi.stubEnv("SPOTIFY_AUTH_SECRET", "test-feedback-signing-secret");
     mocks.auth.mockResolvedValue({ spotify_user_id: "owner-123" });
     mocks.getRecommendationFeedbackStats.mockResolvedValue([]);
+    mocks.getRecommendationFeedbackStats.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -86,6 +87,25 @@ describe("recordRecommendationFeedbackAction", () => {
       userId: "owner-123",
     });
   });
+
+  it("reports success when feedback is saved but stats refresh fails", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mocks.getRecommendationFeedbackStats.mockRejectedValueOnce(
+      new Error("Stats unavailable"),
+    );
+
+    await expect(
+      recordRecommendationFeedbackAction(validInput()),
+    ).resolves.toEqual({ success: true });
+    expect(mocks.recordRecommendationFeedback).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith(
+      "Feedback saved, but stats refresh failed:",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
+  });
 });
 
 describe("recordRecommendationImpressionsAction", () => {
@@ -136,7 +156,7 @@ describe("recordRecommendationImpressionsAction", () => {
 
     await expect(
       recordRecommendationImpressionsAction([impression]),
-    ).resolves.toEqual({ success: true });
+    ).resolves.toEqual({ stats: [], success: true });
     expect(mocks.recordRecommendationImpressions).toHaveBeenCalledWith({
       impressions: [
         {
@@ -149,6 +169,25 @@ describe("recordRecommendationImpressionsAction", () => {
       ],
       userId: "owner-123",
     });
+  });
+
+  it("reports success when impressions are saved but stats refresh fails", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mocks.getRecommendationFeedbackStats.mockRejectedValueOnce(
+      new Error("Stats unavailable"),
+    );
+
+    await expect(
+      recordRecommendationImpressionsAction([validImpression()]),
+    ).resolves.toEqual({ success: true });
+    expect(mocks.recordRecommendationImpressions).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith(
+      "Recommendations saved, but stats refresh failed:",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
   });
 
   it("rejects impression metadata that does not match the signed token", async () => {

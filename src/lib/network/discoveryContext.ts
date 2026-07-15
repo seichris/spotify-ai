@@ -112,7 +112,12 @@ export const createDiscoveryContext = ({
   return {
     anchorTracks,
     clusterLabel: scope === "cluster" ? cluster?.label : undefined,
-    dismissedTrackIds: Array.from(new Set(dismissedTrackIds)).slice(0, 500),
+    dismissedTrackIds: Array.from(
+      new Set([
+        ...(learningProfile?.rejectedTrackIds ?? []),
+        ...dismissedTrackIds,
+      ]),
+    ).slice(0, 500),
     existingTrackIds: Array.from(tracksById.keys()),
     exploration,
     learningProfile,

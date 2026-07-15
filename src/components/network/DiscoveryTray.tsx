@@ -96,8 +96,9 @@ export default function DiscoveryTray({
         <button
           type="button"
           onClick={onClear}
-          className="rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white"
-          aria-label={isLoading ? "Cancel discovery" : "Clear discoveries"}
+          disabled={isLoading}
+          className="rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={isLoading ? "Discovery in progress" : "Clear discoveries"}
         >
           <X className="h-4 w-4" />
         </button>
@@ -163,7 +164,7 @@ export default function DiscoveryTray({
                     <button
                       type="button"
                       onClick={() => onFeedback(candidate, "up")}
-                      disabled={feedbackState === "saving"}
+                      disabled={isLoading || feedbackState === "saving"}
                       aria-label={`Like ${candidate.track.name} recommendation`}
                       aria-pressed={candidate.feedback === "up"}
                       className={`rounded-full border p-1.5 transition-colors disabled:opacity-50 ${candidate.feedback === "up" ? "border-green-400 bg-green-400/20 text-green-300" : "border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"}`}
@@ -173,7 +174,7 @@ export default function DiscoveryTray({
                     <button
                       type="button"
                       onClick={() => onFeedback(candidate, "down")}
-                      disabled={feedbackState === "saving"}
+                      disabled={isLoading || feedbackState === "saving"}
                       aria-label={`Dislike ${candidate.track.name} recommendation`}
                       aria-pressed={candidate.feedback === "down"}
                       className={`rounded-full border p-1.5 transition-colors disabled:opacity-50 ${candidate.feedback === "down" ? "border-red-400 bg-red-400/20 text-red-300" : "border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"}`}
@@ -194,7 +195,8 @@ export default function DiscoveryTray({
                   onClick={() =>
                     isCurrentTrack ? onTogglePlayback() : onPlay(candidate)
                   }
-                  className="inline-flex items-center gap-1 rounded-full bg-green-500 px-2 py-1 text-[10px] font-semibold text-black hover:bg-green-400"
+                  disabled={isLoading}
+                  className="inline-flex items-center gap-1 rounded-full bg-green-500 px-2 py-1 text-[10px] font-semibold text-black hover:bg-green-400 disabled:opacity-50"
                 >
                   {isPlaying ? (
                     <Pause className="h-3 w-3 fill-current" />
@@ -207,6 +209,7 @@ export default function DiscoveryTray({
                   type="button"
                   onClick={() => onSave(candidate)}
                   disabled={
+                    isLoading ||
                     isSaved ||
                     saveState === "saving" ||
                     saveState === "reauthorize"
@@ -228,7 +231,8 @@ export default function DiscoveryTray({
                   <button
                     type="button"
                     onClick={() => onSelect(candidate)}
-                    className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1 text-[10px] text-zinc-300 hover:bg-white/10"
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1 text-[10px] text-zinc-300 hover:bg-white/10 disabled:opacity-50"
                   >
                     <MapPin className="h-3 w-3" /> Map
                   </button>
@@ -236,7 +240,11 @@ export default function DiscoveryTray({
                 <button
                   type="button"
                   onClick={() => onAddToPlaylist(candidate)}
-                  disabled={playlistState === "adding" || playlistState === "added"}
+                  disabled={
+                    isLoading ||
+                    playlistState === "adding" ||
+                    playlistState === "added"
+                  }
                   className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1 text-[10px] text-zinc-300 hover:bg-white/10 disabled:opacity-50"
                 >
                   <ListPlus className="h-3 w-3" />
@@ -252,7 +260,8 @@ export default function DiscoveryTray({
                   <button
                     type="button"
                     onClick={() => onDismiss(candidate.track.id)}
-                    className="rounded-full px-2 py-1 text-[10px] text-zinc-500 hover:bg-white/10 hover:text-white"
+                    disabled={isLoading}
+                    className="rounded-full px-2 py-1 text-[10px] text-zinc-500 hover:bg-white/10 hover:text-white disabled:opacity-50"
                   >
                     Dismiss
                   </button>

@@ -52,13 +52,22 @@ export default async function RecommendationStatsPage() {
   const dashboard = await getRecommendationFeedbackDashboard();
   const dates = Array.from(new Set(dashboard.daily.map((row) => row.date)));
   const ratedStrategies = dashboard.strategies.filter(
-    (strategy) => strategy.impressions > 0 && strategy.positiveRate !== null,
+    (strategy) =>
+      strategy.impressions > 0 &&
+      strategy.total > 0 &&
+      strategy.positiveRate !== null,
   );
-  const winner = [...ratedStrategies].sort(
+  const rankedStrategies = [...ratedStrategies].sort(
     (left, right) =>
       (right.positiveRate ?? -1) - (left.positiveRate ?? -1) ||
       right.impressions - left.impressions,
-  )[0];
+  );
+  const winner =
+    rankedStrategies.length === 2 &&
+    (rankedStrategies[0].positiveRate ?? 0) >
+      (rankedStrategies[1].positiveRate ?? 0)
+      ? rankedStrategies[0]
+      : undefined;
 
   return (
     <main className="min-h-dvh bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-4 py-8 text-zinc-100 sm:px-8">
@@ -114,7 +123,9 @@ export default async function RecommendationStatsPage() {
               <p className="mt-1 text-xs text-zinc-500">
                 {winner
                   ? `${strategyName(winner.strategy)} currently produces the most likes per impression.`
-                  : "Waiting for recommendation impressions and ratings."}
+                  : ratedStrategies.length === 2
+                    ? "No clear leader yet; the strategies are tied."
+                    : "Waiting for recommendation impressions and ratings."}
               </p>
             </div>
             {dashboard.overview.updatedAt && (

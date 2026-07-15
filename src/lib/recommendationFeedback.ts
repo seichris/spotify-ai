@@ -57,6 +57,10 @@ const ensureRecommendationTables = async () => {
         ON recommendation_feedback (user_id, updated_at DESC)
       `;
       await sql`
+        CREATE INDEX IF NOT EXISTS recommendation_feedback_user_track_updated_idx
+        ON recommendation_feedback (user_id, track_id, updated_at DESC)
+      `;
+      await sql`
         CREATE TABLE IF NOT EXISTS recommendation_impressions (
           id BIGSERIAL PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -173,6 +177,10 @@ export interface RecommendationLearningImpressionRow {
   strategy: RecommendationStrategy;
 }
 
+export interface RecommendationRejectedTrackRow {
+  track_id: string;
+}
+
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.max(minimum, Math.min(maximum, value));
 
@@ -258,7 +266,7 @@ const normalizedAffinities = (values: Map<string, AffinityAggregate>) =>
     Array.from(values.entries())
       .map(([key, value]) => [
         key,
-        clamp(value.weight > 0 ? value.score / value.weight : 0, -1, 1),
+        clamp(value.score / Math.max(1, value.weight), -1, 1),
       ] as const)
       .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
       .slice(0, 40),
@@ -270,7 +278,7 @@ const topAffinityKeys = (
 ) =>
   Object.entries(affinities)
     .filter(([, score]) =>
-      direction === "positive" ? score >= 0.1 : score <= -0.1,
+      direction === "positive" ? score >= 0.2 : score <= -0.2,
     )
     .sort((left, right) =>
       direction === "positive" ? right[1] - left[1] : left[1] - right[1],
@@ -293,15 +301,21 @@ const strategyLearningStats = (
     };
   });
 
+const rejectedTrackIdsFromRows = (
+  rows: RecommendationRejectedTrackRow[],
+) => Array.from(new Set(rows.map((row) => row.track_id).filter(Boolean))).slice(0, 500);
+
 export const buildRecommendationLearningProfile = (
   feedbackRows: RecommendationLearningFeedbackRow[],
   ratingRows: RecommendationLearningStrategyRow[],
   impressionRows: RecommendationLearningImpressionRow[],
   now = Date.now(),
+  rejectedTrackRows: RecommendationRejectedTrackRow[] = [],
 ): RecommendationLearningProfile => {
   if (feedbackRows.length === 0) {
     return {
       ...createEmptyRecommendationLearningProfile(),
+      rejectedTrackIds: rejectedTrackIdsFromRows(rejectedTrackRows),
       strategies: strategyLearningStats(ratingRows, impressionRows),
     };
   }
@@ -371,13 +385,13 @@ export const buildRecommendationLearningProfile = (
       .filter(Boolean),
     avoidedGenres: topAffinityKeys(normalizedGenres, "negative"),
     energyFitWeight: clamp(
-      energyFitWeight > 0 ? energyFitScore / energyFitWeight : 0,
+      energyFitScore / Math.max(1, energyFitWeight),
       -1,
       1,
     ),
     genreAffinities: normalizedGenres,
     noveltyWeight: clamp(
-      noveltyWeight > 0 ? noveltyScore / noveltyWeight : 0,
+      noveltyScore / Math.max(1, noveltyWeight),
       -1,
       1,
     ),
@@ -385,10 +399,11 @@ export const buildRecommendationLearningProfile = (
       .map((id) => artistNameRecord[id])
       .filter(Boolean),
     preferredGenres: topAffinityKeys(normalizedGenres, "positive"),
+    rejectedTrackIds: rejectedTrackIdsFromRows(rejectedTrackRows),
     sampleSize,
     strategies: strategyLearningStats(ratingRows, impressionRows),
     tempoFitWeight: clamp(
-      tempoFitWeight > 0 ? tempoFitScore / tempoFitWeight : 0,
+      tempoFitScore / Math.max(1, tempoFitWeight),
       -1,
       1,
     ),
@@ -399,9 +414,10 @@ export const getRecommendationLearningProfile = async (
   userId: string,
 ): Promise<RecommendationLearningProfile> => {
   const sql = await ensureRecommendationTables();
-  const [feedbackRows, ratingRows, impressionRows] = await sql.transaction(
-    [
-      sql`
+  const [feedbackRows, ratingRows, impressionRows, rejectedTrackRows] =
+    await sql.transaction(
+      [
+        sql`
         SELECT
           f.feedback,
           f.updated_at,
@@ -414,8 +430,8 @@ export const getRecommendationLearningProfile = async (
           AND f.updated_at >= NOW() - INTERVAL '180 days'
         ORDER BY f.updated_at DESC
         LIMIT 200
-      `,
-      sql`
+        `,
+        sql`
         SELECT
           strategy,
           COUNT(*) FILTER (WHERE feedback = 1)::INT AS liked,
@@ -424,8 +440,8 @@ export const getRecommendationLearningProfile = async (
         WHERE user_id = ${userId}
           AND updated_at >= NOW() - INTERVAL '180 days'
         GROUP BY strategy
-      `,
-      sql`
+        `,
+        sql`
         SELECT
           strategy,
           COUNT(*)::INT AS impressions
@@ -441,14 +457,31 @@ export const getRecommendationLearningProfile = async (
             AND updated_at >= NOW() - INTERVAL '180 days'
         ) recommendation_exposures
         GROUP BY strategy
-      `,
-    ],
-    { isolationLevel: "RepeatableRead", readOnly: true },
-  );
+        `,
+        sql`
+        SELECT track_id
+        FROM (
+          SELECT DISTINCT ON (track_id)
+            track_id,
+            feedback,
+            updated_at
+          FROM recommendation_feedback
+          WHERE user_id = ${userId}
+          ORDER BY track_id, updated_at DESC
+        ) latest_track_feedback
+        WHERE feedback = -1
+        ORDER BY updated_at DESC
+        LIMIT 500
+        `,
+      ],
+      { isolationLevel: "RepeatableRead", readOnly: true },
+    );
   return buildRecommendationLearningProfile(
     feedbackRows as RecommendationLearningFeedbackRow[],
     ratingRows as RecommendationLearningStrategyRow[],
     impressionRows as RecommendationLearningImpressionRow[],
+    Date.now(),
+    rejectedTrackRows as RecommendationRejectedTrackRow[],
   );
 };
 

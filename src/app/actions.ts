@@ -434,7 +434,7 @@ export async function getMapDiscoveryCandidatesAction(context: DiscoveryContext)
             (context.resultLimit !== undefined &&
                 (!Number.isInteger(context.resultLimit) ||
                     context.resultLimit < 2 ||
-                    context.resultLimit > 8))
+                    context.resultLimit > 10))
         ) {
             return { success: false, error: "Invalid discovery context" };
         }
@@ -546,8 +546,8 @@ export async function getRecommendationLearningProfileAction() {
     } catch (error) {
         console.error("Error loading recommendation learning profile:", error);
         return {
-            success: true,
-            profile: createEmptyRecommendationLearningProfile(),
+            success: false,
+            error: "Could not prepare recommendation tracking.",
         };
     }
 }
@@ -701,10 +701,17 @@ export async function recordRecommendationImpressionsAction(
             impressions: sanitized,
             userId: session.spotify_user_id,
         });
-        return { success: true };
     } catch (error) {
         console.error("Error recording recommendation impressions:", error);
         return { success: false, error: "Could not record recommendations." };
+    }
+
+    try {
+        const stats = await getRecommendationFeedbackStats();
+        return { success: true, stats };
+    } catch (error) {
+        console.error("Recommendations saved, but stats refresh failed:", error);
+        return { success: true };
     }
 }
 
@@ -759,11 +766,17 @@ export async function recordRecommendationFeedbackAction(
             trackId: tokenClaims.trackId,
             userId: session.spotify_user_id,
         });
-        const stats = await getRecommendationFeedbackStats();
-        return { success: true, stats };
     } catch (error) {
         console.error("Error recording recommendation feedback:", error);
         return { success: false, error: "Could not record feedback." };
+    }
+
+    try {
+        const stats = await getRecommendationFeedbackStats();
+        return { success: true, stats };
+    } catch (error) {
+        console.error("Feedback saved, but stats refresh failed:", error);
+        return { success: true };
     }
 }
 

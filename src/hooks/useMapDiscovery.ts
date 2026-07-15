@@ -23,7 +23,8 @@ import {
 } from "@/lib/network/discoveryFeedback";
 import {
   createEmptyRecommendationLearningProfile,
-  recommendationImpressionFor,
+  persistRecommendationImpressionBatch,
+  recommendationStatsAfterImpressions,
 } from "@/lib/network/recommendationLearning";
 import type {
   CandidateSaveState,
@@ -206,7 +207,16 @@ export const useMapDiscovery = (
 
   const discover = useCallback(
     async ({ selectedTrackId }: DiscoveryRequest) => {
-      if (!graph || isLoading || runningDiscovery.current !== null) return;
+      if (
+        !graph ||
+        isLoading ||
+        runningDiscovery.current !== null ||
+        feedbackRequests.current.size > 0 ||
+        playlistRequests.current.size > 0 ||
+        saveRequests.current.size > 0
+      ) {
+        return;
+      }
       const version = requestVersion.current + 1;
       requestVersion.current = version;
       runningDiscovery.current = version;
@@ -224,12 +234,29 @@ export const useMapDiscovery = (
           graph,
           likedTracks,
           onLearningProfile: setLearningProfile,
+          requireLearningProfile: true,
           selectedTrackId: selectedTrackId ?? "",
         });
         if (ranked.length === 0) {
           throw new Error("No new Spotify matches survived validation.");
         }
         if (requestVersion.current === version) {
+          const impressionResult = await persistRecommendationImpressionBatch(
+            ranked,
+            likedTracks,
+            recordRecommendationImpressionsAction,
+          );
+          if (requestVersion.current !== version) return;
+          if (impressionResult.error) {
+            throw new Error(impressionResult.error);
+          }
+          setFeedbackStats((current) =>
+            impressionResult.stats ??
+            recommendationStatsAfterImpressions(
+              current,
+              impressionResult.impressions,
+            ),
+          );
           setCandidates(ranked);
           setEvents((current) => [
             ...current,
@@ -239,23 +266,7 @@ export const useMapDiscovery = (
           setSummary(
             `${ranked.length} recommendations mixed from song and neighborhood matches.`,
           );
-          const impressions = ranked.flatMap((candidate, rank) => {
-            const impression = recommendationImpressionFor(
-              candidate,
-              rank,
-              likedTracks,
-            );
-            return impression ? [impression] : [];
-          });
-          void recordRecommendationImpressionsAction(impressions).then(
-            (result) => {
-              if (!result.success && requestVersion.current === version) {
-                setFeedbackError(
-                  result.error ?? "Could not record recommendation impressions.",
-                );
-              }
-            },
-          );
+          setFeedbackError(null);
         }
       } catch (requestError) {
         if (requestVersion.current === version) {
@@ -290,6 +301,7 @@ export const useMapDiscovery = (
     ) => {
       if (
         (candidate.scope !== "song" && candidate.scope !== "neighborhood") ||
+        runningDiscovery.current !== null ||
         feedbackRequests.current.has(candidate.recommendationId)
       ) {
         return;
@@ -378,6 +390,7 @@ export const useMapDiscovery = (
 
   const dismissCandidate = useCallback(
     (trackId: string) => {
+      if (runningDiscovery.current !== null) return;
       const candidate = candidates.find((item) => item.track.id === trackId);
       if (candidate) recordEvent(candidate, "candidate_dismissed");
       setCandidates((current) =>
@@ -392,7 +405,12 @@ export const useMapDiscovery = (
 
   const addCandidateToPlaylist = useCallback(
     async (candidate: DiscoveryCandidate) => {
-      if (playlistRequests.current.has(candidate.track.id)) return;
+      if (
+        runningDiscovery.current !== null ||
+        playlistRequests.current.has(candidate.track.id)
+      ) {
+        return;
+      }
       playlistRequests.current.add(candidate.track.id);
       setPlaylistStates((current) => ({
         ...current,
@@ -443,7 +461,12 @@ export const useMapDiscovery = (
 
   const saveCandidate = useCallback(
     async (candidate: DiscoveryCandidate) => {
-      if (saveRequests.current.has(candidate.track.id)) return;
+      if (
+        runningDiscovery.current !== null ||
+        saveRequests.current.has(candidate.track.id)
+      ) {
+        return;
+      }
       saveRequests.current.add(candidate.track.id);
       setSaveStates((current) => ({
         ...current,
@@ -491,6 +514,7 @@ export const useMapDiscovery = (
 
   const previewCandidate = useCallback(
     (candidate: DiscoveryCandidate) => {
+      if (runningDiscovery.current !== null) return;
       setCandidates((current) =>
         current.map((item) =>
           item.track.id === candidate.track.id && item.status === "unseen"
@@ -505,6 +529,7 @@ export const useMapDiscovery = (
 
   const selectCandidate = useCallback(
     (candidate: DiscoveryCandidate) => {
+      if (runningDiscovery.current !== null) return;
       recordEvent(candidate, "candidate_selected");
     },
     [recordEvent],
@@ -512,6 +537,7 @@ export const useMapDiscovery = (
 
   const changeExploration = useCallback(
     (mode: ExplorationMode) => {
+      if (runningDiscovery.current !== null) return;
       setExploration(mode);
       setCandidates((current) =>
         rerankDiscoveryCandidates(
@@ -527,6 +553,7 @@ export const useMapDiscovery = (
   );
 
   const clearCandidates = useCallback(() => {
+    if (runningDiscovery.current !== null) return;
     requestVersion.current += 1;
     runningDiscovery.current = null;
     setCandidates([]);
@@ -538,6 +565,14 @@ export const useMapDiscovery = (
   }, []);
 
   const resetFeedback = useCallback(() => {
+    if (
+      runningDiscovery.current !== null ||
+      feedbackRequests.current.size > 0 ||
+      playlistRequests.current.size > 0 ||
+      saveRequests.current.size > 0
+    ) {
+      return;
+    }
     requestVersion.current += 1;
     runningDiscovery.current = null;
     clearDiscoverySession();
@@ -570,6 +605,12 @@ export const useMapDiscovery = (
     feedbackStats,
     hasRestored,
     isLoading,
+    isFeedbackPending: Object.values(feedbackStates).some(
+      (state) => state === "saving",
+    ),
+    isMutationPending:
+      Object.values(playlistStates).some((state) => state === "adding") ||
+      Object.values(saveStates).some((state) => state === "saving"),
     playlistStates,
     previewCandidate,
     recordFeedback,

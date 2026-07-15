@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildClusterProfiles } from "@/lib/network/buildClusterProfiles";
 import { buildSongGraph } from "@/lib/network/buildGraph";
 import { discoverMixedCandidates } from "@/lib/network/discoverMixedCandidates";
@@ -118,10 +118,29 @@ describe("shared mixed discovery", () => {
       selectedTrackId: "dream-1",
     });
 
-    expect(Object.fromEntries(limits)).toEqual({ neighborhood: 3, song: 7 });
+    expect(Object.fromEntries(limits)).toEqual({ neighborhood: 6, song: 10 });
     expect(candidates.filter((item) => item.scope === "song")).toHaveLength(7);
     expect(
       candidates.filter((item) => item.scope === "neighborhood"),
     ).toHaveLength(3);
+  });
+
+  it("does not spend on generation when required tracking is unavailable", async () => {
+    const fetchCandidates = vi.fn();
+
+    await expect(
+      discoverMixedCandidates({
+        fetchCandidates,
+        fetchLearningProfile: async () => ({
+          error: "Could not prepare recommendation tracking.",
+          success: false,
+        }),
+        graph: buildFixtureGraph(),
+        likedTracks: networkFixtureTracks,
+        requireLearningProfile: true,
+        selectedTrackId: "dream-1",
+      }),
+    ).rejects.toThrow("Could not prepare recommendation tracking.");
+    expect(fetchCandidates).not.toHaveBeenCalled();
   });
 });

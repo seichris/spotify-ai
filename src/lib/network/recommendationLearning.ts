@@ -5,6 +5,7 @@ import type {
   RecommendationLearningProfile,
   RecommendationStrategy,
   RecommendationStrategyLearningStats,
+  RecommendationStrategyStats,
 } from "@/types/network";
 
 export const RECOMMENDATION_PROMPT_VERSION = "feedback-loop-v1";
@@ -37,6 +38,7 @@ export const createEmptyRecommendationLearningProfile =
     noveltyWeight: 0,
     preferredArtists: [],
     preferredGenres: [],
+    rejectedTrackIds: [],
     sampleSize: 0,
     strategies: STRATEGIES.map(emptyStrategyStats),
     tempoFitWeight: 0,
@@ -136,6 +138,7 @@ export const sanitizeRecommendationLearningProfile = (
     noveltyWeight: numberWeight(record.noveltyWeight),
     preferredArtists: sanitizeStringArray(record.preferredArtists, 8),
     preferredGenres: sanitizeStringArray(record.preferredGenres, 8),
+    rejectedTrackIds: sanitizeStringArray(record.rejectedTrackIds, 500),
     sampleSize:
       typeof record.sampleSize === "number" && Number.isFinite(record.sampleSize)
         ? clamp(Math.floor(record.sampleSize), 0, 200)
@@ -252,6 +255,65 @@ export const recommendationImpressionFor = (
     trackId: candidate.track.id,
   };
 };
+
+interface RecommendationImpressionWriteResult {
+  error?: string;
+  stats?: RecommendationStrategyStats[];
+  success: boolean;
+}
+
+export const persistRecommendationImpressionBatch = async (
+  candidates: DiscoveryCandidate[],
+  likedTracks: EnrichedTrack[],
+  recordImpressions: (
+    impressions: RecommendationImpression[],
+  ) => Promise<RecommendationImpressionWriteResult>,
+) => {
+  const impressions = candidates.flatMap((candidate, rank) => {
+    const impression = recommendationImpressionFor(candidate, rank, likedTracks);
+    return impression ? [impression] : [];
+  });
+  let error = "Could not record recommendation impressions.";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const result = await recordImpressions(impressions);
+      if (result.success) {
+        return { error: null, impressions, stats: result.stats };
+      }
+      error = result.error ?? error;
+    } catch {
+      // The write is idempotent, so one retry safely covers interrupted responses.
+    }
+  }
+  return { error, impressions, stats: undefined };
+};
+
+export const recommendationStatsAfterImpressions = (
+  current: RecommendationStrategyStats[],
+  impressions: RecommendationImpression[],
+): RecommendationStrategyStats[] =>
+  STRATEGIES.map((strategy) => {
+    const existing = current.find((item) => item.strategy === strategy);
+    const impressionCount = impressions.filter(
+      (impression) => impression.strategy === strategy,
+    ).length;
+    const disliked = existing?.disliked ?? 0;
+    const liked = existing?.liked ?? 0;
+    const total = existing?.total ?? liked + disliked;
+    const updatedImpressions = (existing?.impressions ?? 0) + impressionCount;
+    return {
+      disliked,
+      impressions: updatedImpressions,
+      liked,
+      likeRate: total > 0 ? liked / total : null,
+      positiveRate:
+        updatedImpressions > 0 ? liked / updatedImpressions : null,
+      ratingRate:
+        updatedImpressions > 0 ? total / updatedImpressions : null,
+      strategy,
+      total,
+    };
+  });
 
 const fitPreference = (weight: number) => {
   if (weight >= 0.15) return "prefer a close match";

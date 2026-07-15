@@ -28,6 +28,7 @@ export type DiscoveryCandidatesFetcher = (
 ) => Promise<DiscoveryCandidatesResult>;
 
 interface RecommendationLearningProfileResult {
+  error?: string;
   profile?: RecommendationLearningProfile;
   success: boolean;
 }
@@ -45,6 +46,7 @@ interface DiscoverMixedCandidatesOptions {
   likedTracks: EnrichedTrack[];
   onLearningProfile?: (profile: RecommendationLearningProfile) => void;
   random?: () => number;
+  requireLearningProfile?: boolean;
   selectedTrackId: string;
 }
 
@@ -58,6 +60,7 @@ export const discoverMixedCandidates = async ({
   likedTracks,
   onLearningProfile,
   random = Math.random,
+  requireLearningProfile = false,
   selectedTrackId,
 }: DiscoverMixedCandidatesOptions) => {
   let learningProfile = createEmptyRecommendationLearningProfile();
@@ -66,8 +69,13 @@ export const discoverMixedCandidates = async ({
       const result = await fetchLearningProfile();
       if (result.success && result.profile) {
         learningProfile = sanitizeRecommendationLearningProfile(result.profile);
+      } else if (requireLearningProfile) {
+        throw new Error(
+          result.error ?? "Could not prepare recommendation tracking.",
+        );
       }
-    } catch {
+    } catch (error) {
+      if (requireLearningProfile) throw error;
       // Personalization is best effort; base discovery remains available.
     }
   }
@@ -82,7 +90,7 @@ export const discoverMixedCandidates = async ({
       exploration,
       graph,
       learningProfile,
-      resultLimit: allocation[scope],
+      resultLimit: Math.min(10, allocation[scope] + 3),
       scope,
       selectedTrackId,
       tracks: likedTracks,
@@ -105,7 +113,7 @@ export const discoverMixedCandidates = async ({
         exploration,
         events,
         learningProfile,
-      ).slice(0, context.resultLimit ?? 5);
+      ).slice(0, context.resultLimit ?? 8);
     }),
   );
 

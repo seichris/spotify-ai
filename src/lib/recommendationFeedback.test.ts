@@ -10,6 +10,7 @@ vi.mock("@neondatabase/serverless", () => ({ neon: mocks.neon }));
 
 describe("getRecommendationFeedbackDashboard", () => {
   let getRecommendationFeedbackDashboard: typeof import("@/lib/recommendationFeedback")["getRecommendationFeedbackDashboard"];
+  let getRecommendationLearningProfile: typeof import("@/lib/recommendationFeedback")["getRecommendationLearningProfile"];
 
   beforeEach(async () => {
     vi.resetModules();
@@ -18,9 +19,10 @@ describe("getRecommendationFeedbackDashboard", () => {
     mocks.sql.mockImplementation((strings: TemplateStringsArray) => ({
       query: strings.join("?"),
     }));
-    ({ getRecommendationFeedbackDashboard } = await import(
-      "@/lib/recommendationFeedback"
-    ));
+    ({
+      getRecommendationFeedbackDashboard,
+      getRecommendationLearningProfile,
+    } = await import("@/lib/recommendationFeedback"));
   });
 
   afterEach(() => {
@@ -182,5 +184,31 @@ describe("getRecommendationFeedbackDashboard", () => {
         },
       ],
     });
+  });
+
+  it("loads durable rejected track IDs independently of feature snapshots", async () => {
+    mocks.transaction.mockResolvedValue([
+      [],
+      [],
+      [],
+      [
+        { track_id: "rejected-new" },
+        { track_id: "rejected-old" },
+      ],
+    ]);
+
+    await expect(
+      getRecommendationLearningProfile("owner-123"),
+    ).resolves.toMatchObject({
+      rejectedTrackIds: ["rejected-new", "rejected-old"],
+      sampleSize: 0,
+    });
+    const queries = mocks.transaction.mock.calls[0][0].map(
+      ({ query }: { query: string }) => query.replace(/\s+/g, " ").trim(),
+    );
+    expect(queries).toHaveLength(4);
+    expect(queries[3]).toContain("DISTINCT ON (track_id)");
+    expect(queries[3]).toContain("feedback = -1");
+    expect(queries[3]).not.toContain("INTERVAL '180 days'");
   });
 });

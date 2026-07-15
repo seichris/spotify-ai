@@ -104,6 +104,7 @@ function MapEvents({ onHover, onSelect, tracksById }: MapEventsProps) {
 export default function SongMapClient({
   libraryProgress,
   onCandidateSaved,
+  onDiscoveryBusyChange,
   onPlaySong,
   songs,
 }: SongMapProps) {
@@ -125,6 +126,33 @@ export default function SongMapClient({
   const discovery = useMapDiscovery(similarityGraph, songs, {
     onCandidateSaved,
   });
+  const isDiscoveryBusy =
+    discovery.isLoading ||
+    discovery.isFeedbackPending ||
+    discovery.isMutationPending;
+
+  useEffect(() => {
+    onDiscoveryBusyChange?.(isDiscoveryBusy);
+  }, [isDiscoveryBusy, onDiscoveryBusyChange]);
+
+  useEffect(
+    () => () => {
+      onDiscoveryBusyChange?.(false);
+    },
+    [onDiscoveryBusyChange],
+  );
+
+  useEffect(() => {
+    if (!isDiscoveryBusy) return;
+    const preventNavigation = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventNavigation);
+    return () => {
+      window.removeEventListener("beforeunload", preventNavigation);
+    };
+  }, [isDiscoveryBusy]);
   const graph = useMemo(
     () =>
       similarityGraph
@@ -274,6 +302,7 @@ export default function SongMapClient({
         eventCount={discovery.events.length}
         exploration={discovery.exploration}
         hasRestored={discovery.hasRestored}
+        isLoading={isDiscoveryBusy}
         onChange={discovery.changeExploration}
         onReset={() => {
           discovery.resetFeedback();
@@ -358,7 +387,7 @@ export default function SongMapClient({
           isSelected={Boolean(
             validSelectedTrack && activeTrack.id === validSelectedTrack.id,
           )}
-          isDiscovering={discovery.isLoading}
+          isDiscovering={isDiscoveryBusy}
           onAddCandidateToPlaylist={discovery.addCandidateToPlaylist}
           onClear={() => setSelectedTrack(null)}
           onDismissCandidate={(trackId) => {

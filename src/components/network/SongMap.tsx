@@ -7,6 +7,7 @@ import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 export interface SongMapProps {
   libraryProgress: number;
   onCandidateSaved?: (track: EnrichedTrack) => void;
+  onDiscoveryBusyChange?: (isBusy: boolean) => void;
   onPlaySong?: (track: EnrichedTrack) => boolean | Promise<boolean>;
   songs: EnrichedTrack[];
 }

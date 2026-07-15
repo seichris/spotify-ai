@@ -46,6 +46,7 @@ vi.mock("@/lib/recommendationFeedback", () => ({
 import {
   getGeminiVibeMetadataAction,
   getMapDiscoveryCandidatesAction,
+  getRecommendationLearningProfileAction,
 } from "@/app/actions";
 
 const context: DiscoveryContext = {
@@ -72,6 +73,7 @@ const context: DiscoveryContext = {
     noveltyWeight: 0.5,
     preferredArtists: [],
     preferredGenres: ["dream pop"],
+    rejectedTrackIds: [],
     sampleSize: 4,
     strategies: [
       { disliked: 0, impressions: 0, liked: 0, strategy: "song" },
@@ -180,6 +182,25 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
       trackId: "track-123",
       userId: "owner-123",
     });
+  });
+
+  it("fails tracking preflight when the learning database is unavailable", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mocks.getRecommendationLearningProfile.mockRejectedValueOnce(
+      new Error("Database unavailable"),
+    );
+
+    await expect(getRecommendationLearningProfileAction()).resolves.toEqual({
+      error: "Could not prepare recommendation tracking.",
+      success: false,
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Error loading recommendation learning profile:",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
   });
 });
 

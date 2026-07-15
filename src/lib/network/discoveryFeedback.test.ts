@@ -93,6 +93,21 @@ describe("discovery session persistence", () => {
         }),
       ),
     ).toEqual(createEmptyDiscoverySession());
+    const migrated = parseDiscoverySession(
+      JSON.stringify({
+        ...state,
+        schemaVersion: 2,
+      }),
+    );
+    expect(migrated).toMatchObject({
+      candidates: [],
+      dismissedTrackIds: ["dismissed-a"],
+      events: state.events,
+      exploration: "adventurous",
+      schemaVersion: DISCOVERY_SESSION_SCHEMA_VERSION,
+      summary: "",
+      updatedAt: 123,
+    });
   });
 });
 
