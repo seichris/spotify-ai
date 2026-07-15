@@ -11,6 +11,10 @@ import {
 import { createNodeImageProgram } from "@sigma/node-image";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  drawDiscNodeHover,
+  type NodeHoverDrawingFunction,
+} from "sigma/rendering";
 import { usePlayer } from "@/components/PlayerProvider";
 import ClusterFocus from "@/components/network/ClusterFocus";
 import DiscoveryControls from "@/components/network/DiscoveryControls";
@@ -25,13 +29,29 @@ import { buildPreviewGraph } from "@/lib/network/buildPreviewGraph";
 import { placeCandidates } from "@/lib/network/placeCandidates";
 import type { SongMapProps } from "@/components/network/SongMap";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
-import type { ClusterProfile, DiscoveryCandidate } from "@/types/network";
+import type {
+  ClusterProfile,
+  DiscoveryCandidate,
+  SongGraphEdgeAttributes,
+  SongGraphNodeAttributes,
+} from "@/types/network";
+
+const drawNodeHover: NodeHoverDrawingFunction<
+  SongGraphNodeAttributes,
+  SongGraphEdgeAttributes
+> = (context, data, settings) => {
+  drawDiscNodeHover(context, data, {
+    ...settings,
+    labelColor: { color: "#09090b" },
+  });
+};
 
 const SIGMA_SETTINGS = {
   allowInvalidContainer: false,
   defaultEdgeColor: "#27272a",
   defaultNodeColor: "#71717a",
   defaultNodeType: "image",
+  defaultDrawNodeHover: drawNodeHover,
   edgeColor: "default" as const,
   enableEdgeEvents: false,
   labelColor: { color: "#e4e4e7" },

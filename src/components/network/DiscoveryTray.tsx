@@ -42,11 +42,6 @@ interface DiscoveryTrayProps {
   summary: string;
 }
 
-const confidenceLabel = (candidate: DiscoveryCandidate) =>
-  candidate.mapped
-    ? `${candidate.confidence} map match`
-    : "weak map match";
-
 const statsLabel = (stats: RecommendationStrategyStats | undefined) => {
   if (!stats || stats.likeRate === null) return "No ratings yet";
   return `${Math.round(stats.likeRate * 100)}% liked (${stats.total})`;
@@ -151,11 +146,6 @@ export default function DiscoveryTray({
                   </p>
                   <p className="truncate text-[11px] text-zinc-500">
                     {candidate.track.artists.map((artist) => artist.name).join(", ")}
-                  </p>
-                  <p
-                    className={`mt-1 text-[10px] font-medium ${candidate.mapped ? "text-yellow-400" : "text-zinc-600"}`}
-                  >
-                    {isSaved ? "saved to Liked Songs" : confidenceLabel(candidate)}
                   </p>
                 </div>
               </div>

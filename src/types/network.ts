@@ -1,5 +1,6 @@
 import type { SerializedGraph } from "graphology-types";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
+import type { TrackAudioFeatures } from "@/types/audio";
 
 export type SongNodeKind = "liked" | "candidate";
 
@@ -12,10 +13,12 @@ export type CandidateStatus =
 export interface SimilarityEvidence {
   album: number;
   artist: number;
+  energy?: number;
   genre: number;
   reasonCodes: string[];
   semantic?: number;
   sharedGenres: string[];
+  tempo?: number;
 }
 
 export interface SongGraphNodeAttributes {
@@ -138,6 +141,7 @@ export type CandidateSaveState =
 export interface DiscoveryTrackSummary {
   artistIds: string[];
   artistNames: string[];
+  features: TrackAudioFeatures | null;
   genres: string[];
   id: string;
   name: string;

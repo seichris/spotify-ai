@@ -12,6 +12,21 @@ const intersect = (left: string[], right: string[]) => {
   return left.filter((value) => rightSet.has(value));
 };
 
+const clampScore = (value: number) => Math.max(0, Math.min(1, value));
+
+export const calculateTempoSimilarity = (left: number, right: number) => {
+  if (!Number.isFinite(left) || !Number.isFinite(right) || left <= 0 || right <= 0) {
+    return 0;
+  }
+
+  const relativeDistance = Math.min(
+    ...[right / 2, right, right * 2].map(
+      (candidate) => Math.abs(left - candidate) / Math.max(left, candidate),
+    ),
+  );
+  return clampScore(1 - relativeDistance / 0.35);
+};
+
 export const calculateSimilarity = (
   left: SongFeature,
   right: SongFeature,
@@ -33,25 +48,50 @@ export const calculateSimilarity = (
   const artist = sharedArtists.length > 0 ? 1 : 0;
   const album =
     Boolean(left.albumId) && left.albumId === right.albumId ? 1 : 0;
+  const tempo =
+    left.tempo === null || right.tempo === null
+      ? undefined
+      : calculateTempoSimilarity(left.tempo, right.tempo);
+  const energy =
+    left.energy === null || right.energy === null
+      ? undefined
+      : clampScore(1 - Math.abs(left.energy - right.energy));
   const reasonCodes: string[] = [];
 
   if (sharedGenres.length > 0) reasonCodes.push("shared_genre");
   if (sharedArtists.length > 0) reasonCodes.push("shared_artist");
   if (album > 0) reasonCodes.push("shared_album");
+  if (tempo !== undefined && tempo >= 0.75) reasonCodes.push("similar_tempo");
+  if (energy !== undefined && energy >= 0.8) reasonCodes.push("similar_energy");
 
-  const score =
+  let score =
     GRAPH_SIMILARITY_WEIGHTS.genre * genre +
     GRAPH_SIMILARITY_WEIGHTS.artist * artist +
     GRAPH_SIMILARITY_WEIGHTS.album * album;
+  let availableWeight =
+    GRAPH_SIMILARITY_WEIGHTS.genre +
+    GRAPH_SIMILARITY_WEIGHTS.artist +
+    GRAPH_SIMILARITY_WEIGHTS.album;
+
+  if (tempo !== undefined) {
+    score += GRAPH_SIMILARITY_WEIGHTS.tempo * tempo;
+    availableWeight += GRAPH_SIMILARITY_WEIGHTS.tempo;
+  }
+  if (energy !== undefined) {
+    score += GRAPH_SIMILARITY_WEIGHTS.energy * energy;
+    availableWeight += GRAPH_SIMILARITY_WEIGHTS.energy;
+  }
 
   return {
     evidence: {
       album,
       artist,
+      energy,
       genre,
       reasonCodes,
       sharedGenres,
+      tempo,
     },
-    score: Math.max(0, Math.min(1, score)),
+    score: clampScore(score / availableWeight),
   };
 };

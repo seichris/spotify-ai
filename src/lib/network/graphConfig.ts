@@ -1,11 +1,13 @@
-export const GRAPH_CACHE_SCHEMA_VERSION = 1;
-export const GRAPH_MODEL_VERSION = "metadata-v1";
+export const GRAPH_CACHE_SCHEMA_VERSION = 2;
+export const GRAPH_MODEL_VERSION = "metadata-audio-v2";
 export const GRAPH_LAYOUT_VERSION = "forceatlas2-v2";
 
 export const GRAPH_SIMILARITY_WEIGHTS = {
-  genre: 0.72,
-  artist: 0.18,
-  album: 0.1,
+  genre: 0.58,
+  artist: 0.14,
+  album: 0.08,
+  tempo: 0.1,
+  energy: 0.1,
 } as const;
 
 export const GRAPH_NEIGHBOR_CONFIG = {

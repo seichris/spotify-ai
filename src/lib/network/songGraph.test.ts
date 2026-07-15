@@ -3,7 +3,10 @@ import { buildClusterProfiles } from "@/lib/network/buildClusterProfiles";
 import { buildFeatures, normalizeLibrary } from "@/lib/network/buildFeatures";
 import { buildSongGraph as constructSongGraph } from "@/lib/network/buildGraph";
 import { buildSongGraph } from "@/lib/network/buildSongGraph";
-import { calculateSimilarity } from "@/lib/network/calculateSimilarity";
+import {
+  calculateSimilarity,
+  calculateTempoSimilarity,
+} from "@/lib/network/calculateSimilarity";
 import { detectCommunities } from "@/lib/network/detectCommunities";
 import {
   createLibraryFingerprint,
@@ -53,6 +56,39 @@ describe("song graph features and similarity", () => {
       "shared_artist",
       "shared_album",
     ]);
+  });
+
+  it("rewards compatible tempo and energy, including half-time relationships", () => {
+    const audioTracks = [
+      { energy: 0.7, id: "audio-seed", tempo: 72 },
+      { energy: 0.74, id: "audio-close", tempo: 144 },
+      { energy: 0.2, id: "audio-mismatch", tempo: 110 },
+    ].map(({ energy, id, tempo }) => ({
+      ...networkFixtureTracks[2],
+      album: { ...networkFixtureTracks[2].album, id: `album-${id}` },
+      artists: [{ id: `artist-${id}`, name: id }],
+      features: { energy, tempo },
+      id,
+      uri: `spotify:track:${id}`,
+    }));
+    const { features, genreIdf } = buildFeatures(audioTracks);
+    const byId = new Map(features.map((feature) => [feature.track.id, feature]));
+    const close = calculateSimilarity(
+      byId.get("audio-seed")!,
+      byId.get("audio-close")!,
+      genreIdf,
+    );
+    const mismatch = calculateSimilarity(
+      byId.get("audio-seed")!,
+      byId.get("audio-mismatch")!,
+      genreIdf,
+    );
+
+    expect(calculateTempoSimilarity(72, 144)).toBe(1);
+    expect(calculateTempoSimilarity(144, 72)).toBe(1);
+    expect(close.evidence.reasonCodes).toContain("similar_tempo");
+    expect(close.evidence.reasonCodes).toContain("similar_energy");
+    expect(close.score).toBeGreaterThan(mismatch.score);
   });
 });
 
@@ -159,6 +195,22 @@ describe("layout and graph cache", () => {
 
     expect(createLibraryFingerprint(changedTracks)).not.toBe(
       createLibraryFingerprint(networkFixtureTracks),
+    );
+  });
+
+  it("invalidates the cache when tempo or energy changes", () => {
+    const withAudio = networkFixtureTracks.map((track, index) => ({
+      ...track,
+      features: { energy: 0.6, tempo: 100 + index },
+    }));
+    const changedAudio = withAudio.map((track) =>
+      track.id === "dream-1"
+        ? { ...track, features: { ...track.features, tempo: 128 } }
+        : track,
+    );
+
+    expect(createLibraryFingerprint(changedAudio)).not.toBe(
+      createLibraryFingerprint(withAudio),
     );
   });
 });
