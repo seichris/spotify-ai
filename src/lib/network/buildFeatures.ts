@@ -3,7 +3,9 @@ import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 export interface SongFeature {
   albumId: string;
   artistIds: string[];
+  energy: number | null;
   genres: string[];
+  tempo: number | null;
   track: EnrichedTrack;
 }
 
@@ -26,6 +28,8 @@ const trackPreferenceSignature = (track: EnrichedTrack) =>
     track.album.name,
     track.artists.map((artist) => `${artist.id}:${artist.name}`).join("|"),
     track.genres.join("|"),
+    track.features?.energy ?? "",
+    track.features?.tempo ?? "",
   ].join("\u0000");
 
 export const normalizeLibrary = (
@@ -64,7 +68,9 @@ export const createSongFeatures = (tracks: EnrichedTrack[]): SongFeature[] =>
     artistIds: Array.from(
       new Set(track.artists.map((artist) => artist.id).filter(Boolean)),
     ).sort(),
+    energy: track.features?.energy ?? null,
     genres: track.genres,
+    tempo: track.features?.tempo ?? null,
     track,
   }));
 

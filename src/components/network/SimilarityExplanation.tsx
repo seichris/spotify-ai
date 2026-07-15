@@ -19,6 +19,8 @@ const describeEvidence = (evidence: SongGraphEdgeAttributes["evidence"]) => {
   }
   if (evidence.artist > 0) reasons.push("shared artist");
   if (evidence.album > 0) reasons.push("same album");
+  if (evidence.reasonCodes.includes("similar_tempo")) reasons.push("similar tempo");
+  if (evidence.reasonCodes.includes("similar_energy")) reasons.push("similar energy");
   return reasons.join(" · ") || "weak metadata link";
 };
 

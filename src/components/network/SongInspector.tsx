@@ -117,7 +117,7 @@ export default function SongInspector({
               disabled={isDiscovering}
               className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
             >
-              <Sparkles className="h-3.5 w-3.5" /> Discover 10 songs
+              <Sparkles className="h-3.5 w-3.5" /> Discover 10 new songs
             </button>
           )}
           {candidate && (
@@ -151,7 +151,7 @@ export default function SongInspector({
                   onClick={() => onAddCandidateToPlaylist(candidate)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10"
                 >
-                  <ListPlus className="h-3.5 w-3.5" /> Vibe Map Playlist
+                  <ListPlus className="h-3.5 w-3.5" /> Endless Songs Playlist
                 </button>
               )}
               {onDismissCandidate && (

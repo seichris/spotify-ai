@@ -42,11 +42,6 @@ interface DiscoveryTrayProps {
   summary: string;
 }
 
-const confidenceLabel = (candidate: DiscoveryCandidate) =>
-  candidate.mapped
-    ? `${candidate.confidence} map match`
-    : "weak map match";
-
 const statsLabel = (stats: RecommendationStrategyStats | undefined) => {
   if (!stats || stats.likeRate === null) return "No ratings yet";
   return `${Math.round(stats.likeRate * 100)}% liked (${stats.total})`;
@@ -152,11 +147,6 @@ export default function DiscoveryTray({
                   <p className="truncate text-[11px] text-zinc-500">
                     {candidate.track.artists.map((artist) => artist.name).join(", ")}
                   </p>
-                  <p
-                    className={`mt-1 text-[10px] font-medium ${candidate.mapped ? "text-yellow-400" : "text-zinc-600"}`}
-                  >
-                    {isSaved ? "saved to Liked Songs" : confidenceLabel(candidate)}
-                  </p>
                 </div>
               </div>
               <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
@@ -249,12 +239,12 @@ export default function DiscoveryTray({
                 >
                   <ListPlus className="h-3 w-3" />
                   {playlistState === "added"
-                    ? "In Vibe Map Playlist"
+                    ? "In Endless Songs Playlist"
                     : playlistState === "adding"
                       ? "Adding…"
                       : playlistState === "error"
-                        ? "Retry Vibe Map Playlist"
-                        : "Vibe Map Playlist"}
+                        ? "Retry Endless Songs Playlist"
+                        : "Endless Songs Playlist"}
                 </button>
                 {!isSaved && (
                   <button

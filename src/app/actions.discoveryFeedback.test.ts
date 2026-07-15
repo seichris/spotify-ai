@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   fetchSpotify: vi.fn(),
   generateStructuredSongSuggestions: vi.fn(),
+  getTrackAudioFeatures: vi.fn(),
   searchSpotify: vi.fn(),
   selectBestSpotifyMatch: vi.fn(),
 }));
@@ -27,6 +28,9 @@ vi.mock("@/lib/gemini", () => ({
   generateStructuredSongSuggestions:
     mocks.generateStructuredSongSuggestions,
 }));
+vi.mock("@/lib/reccobeats", () => ({
+  getTrackAudioFeatures: mocks.getTrackAudioFeatures,
+}));
 vi.mock("@/lib/discoveryResolution", () => ({
   selectBestSpotifyMatch: mocks.selectBestSpotifyMatch,
 }));
@@ -35,13 +39,17 @@ vi.mock("@/lib/recommendationFeedback", () => ({
   recordRecommendationFeedback: vi.fn(),
 }));
 
-import { getMapDiscoveryCandidatesAction } from "@/app/actions";
+import {
+  getGeminiVibeMetadataAction,
+  getMapDiscoveryCandidatesAction,
+} from "@/app/actions";
 
 const context: DiscoveryContext = {
   anchorTracks: [
     {
       artistIds: ["artist-seed"],
       artistNames: ["Seed Artist"],
+      features: { energy: 0.72, tempo: 118 },
       genres: ["dream pop"],
       id: "seed-track",
       name: "Seed Track",
@@ -55,6 +63,7 @@ const context: DiscoveryContext = {
     {
       artistIds: ["artist-seed"],
       artistNames: ["Seed Artist"],
+      features: { energy: 0.72, tempo: 118 },
       genres: ["dream pop"],
       id: "seed-track",
       name: "Seed Track",
@@ -102,6 +111,9 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
     mocks.fetchSpotify.mockResolvedValue({
       artists: [{ genres: ["dream pop"], id: "artist-123" }],
     });
+    mocks.getTrackAudioFeatures.mockResolvedValue(
+      new Map([["track-123", { energy: 0.75, tempo: 121 }]]),
+    );
   });
 
   afterEach(() => {
@@ -116,6 +128,14 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
       throw new Error("Expected discovery suggestions.");
     }
     expect(result.suggestions).toHaveLength(1);
+    expect(result.suggestions[0].track.features).toEqual({
+      energy: 0.75,
+      tempo: 121,
+    });
+    expect(mocks.generateStructuredSongSuggestions).toHaveBeenCalledWith(
+      expect.stringContaining('"tempoBpm":118'),
+      expect.any(Object),
+    );
     expect(
       verifyRecommendationFeedbackToken(
         result.suggestions[0].recommendationId,
@@ -126,5 +146,32 @@ describe("getMapDiscoveryCandidatesAction feedback issuance", () => {
       trackId: "track-123",
       userId: "owner-123",
     });
+  });
+});
+
+describe("getGeminiVibeMetadataAction", () => {
+  it("uses structured generation only to name and describe the neighborhood", async () => {
+    mocks.generateStructuredSongSuggestions.mockResolvedValueOnce({
+      data: {
+        vibeDescription: "Dreamy guitars and soft-focus pop textures.",
+        vibeName: "Soft Focus",
+      },
+      model: "test-model",
+      usageMetadata: {},
+    });
+
+    const result = await getGeminiVibeMetadataAction(
+      "Music Map neighborhood: Dream Pop / Shoegaze",
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      vibeDescription: "Dreamy guitars and soft-focus pop textures.",
+      vibeName: "Soft Focus",
+    });
+    expect(mocks.generateStructuredSongSuggestions).toHaveBeenCalledWith(
+      expect.stringContaining("Do not recommend songs"),
+      expect.any(Object),
+    );
   });
 });

@@ -17,6 +17,8 @@ export const createLibraryFingerprint = (tracks: EnrichedTrack[]) => {
       track.album.id,
       track.artists.map((artist) => artist.id).sort().join(","),
       track.genres.join(","),
+      track.features?.energy ?? "",
+      track.features?.tempo ?? "",
     ].join(":"),
   );
   const source = [

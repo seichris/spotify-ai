@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { getLikedSongsAction, getArtistsAction, getUserProfileAction, signOutAction } from "@/app/actions";
+import { getLibraryEnrichmentAction, getLikedSongsAction, getUserProfileAction, signOutAction } from "@/app/actions";
 import { SpotifyTrack } from "@/lib/spotify";
+import type { TrackAudioFeatures } from "@/types/audio";
 
 interface SpotifySavedTrackItem {
     track: SpotifyTrack | null;
@@ -26,7 +27,7 @@ interface LikedSongsActionResult {
 }
 
 export interface EnrichedTrack extends SpotifyTrack {
-    features: null; // Deprecated/Restricted
+    features: TrackAudioFeatures | null;
     genres: string[];
     added_at?: string;
 }
@@ -42,7 +43,7 @@ export function useSpotifyLibrary() {
     const locallyPromotedIds = useRef(new Set<string>());
 
     const BATCH_SIZE = 50;
-    const LIBRARY_CACHE_KEY = 'spotify_library_cache';
+    const LIBRARY_CACHE_KEY = 'spotify_library_cache_v2';
 
     // Save to cache whenever state changes
     useEffect(() => {
@@ -86,16 +87,21 @@ export function useSpotifyLibrary() {
         const uniqueArtistIds = Array.from(artistIds);
         const artistMap = new Map<string, string[]>();
 
-        for (let i = 0; i < uniqueArtistIds.length; i += BATCH_SIZE) {
-            const batch = uniqueArtistIds.slice(i, i + BATCH_SIZE);
-            const artists = await getArtistsAction(batch) as SpotifyArtist[];
-
-            artists.forEach((artist) => {
-                if (artist?.id) {
-                    artistMap.set(artist.id, artist.genres ?? []);
-                }
-            });
-        }
+        const enrichment = await getLibraryEnrichmentAction(
+            validTracks.map((track) => track.id),
+            uniqueArtistIds,
+        );
+        (enrichment.artists as SpotifyArtist[]).forEach((artist) => {
+            if (artist?.id) {
+                artistMap.set(artist.id, artist.genres ?? []);
+            }
+        });
+        const audioFeatures = new Map<string, TrackAudioFeatures>(
+            enrichment.audioFeatures.map(({ id, energy, tempo }) => [
+                id,
+                { energy, tempo },
+            ]),
+        );
 
         // 3. Merge Genres into Tracks
         const enrichedTracks: EnrichedTrack[] = validTracks.map((track) => {
@@ -115,7 +121,7 @@ export function useSpotifyLibrary() {
 
             return {
                 ...track,
-                features: null,
+                features: audioFeatures.get(track.id) ?? null,
                 genres: sortedGenres
             };
         });

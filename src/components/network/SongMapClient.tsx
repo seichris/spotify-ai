@@ -11,6 +11,10 @@ import {
 import { createNodeImageProgram } from "@sigma/node-image";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  drawDiscNodeHover,
+  type NodeHoverDrawingFunction,
+} from "sigma/rendering";
 import { usePlayer } from "@/components/PlayerProvider";
 import ClusterFocus from "@/components/network/ClusterFocus";
 import DiscoveryControls from "@/components/network/DiscoveryControls";
@@ -20,17 +24,34 @@ import NeighborhoodHighlight from "@/components/network/NeighborhoodHighlight";
 import SongInspector from "@/components/network/SongInspector";
 import { useMapDiscovery } from "@/hooks/useMapDiscovery";
 import { useSongGraph } from "@/hooks/useSongGraph";
+import { buildPlaybackQueue } from "@/lib/network/buildPlaybackQueue";
 import { buildPreviewGraph } from "@/lib/network/buildPreviewGraph";
 import { placeCandidates } from "@/lib/network/placeCandidates";
 import type { SongMapProps } from "@/components/network/SongMap";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
-import type { ClusterProfile } from "@/types/network";
+import type {
+  ClusterProfile,
+  DiscoveryCandidate,
+  SongGraphEdgeAttributes,
+  SongGraphNodeAttributes,
+} from "@/types/network";
+
+const drawNodeHover: NodeHoverDrawingFunction<
+  SongGraphNodeAttributes,
+  SongGraphEdgeAttributes
+> = (context, data, settings) => {
+  drawDiscNodeHover(context, data, {
+    ...settings,
+    labelColor: { color: "#09090b" },
+  });
+};
 
 const SIGMA_SETTINGS = {
   allowInvalidContainer: false,
   defaultEdgeColor: "#27272a",
   defaultNodeColor: "#71717a",
   defaultNodeType: "image",
+  defaultDrawNodeHover: drawNodeHover,
   edgeColor: "default" as const,
   enableEdgeEvents: false,
   labelColor: { color: "#e4e4e7" },
@@ -81,6 +102,7 @@ function MapEvents({ onHover, onSelect, tracksById }: MapEventsProps) {
 }
 
 export default function SongMapClient({
+  libraryProgress,
   onCandidateSaved,
   onPlaySong,
   songs,
@@ -90,7 +112,7 @@ export default function SongMapClient({
   const [selectedCluster, setSelectedCluster] = useState<ClusterProfile | null>(
     null,
   );
-  const { currentTrack, isPaused, togglePlay } = usePlayer();
+  const { currentTrack, isPaused, playTrack, togglePlay } = usePlayer();
   const previewGraph = useMemo(() => buildPreviewGraph(songs), [songs]);
   const {
     clusters,
@@ -147,11 +169,38 @@ export default function SongMapClient({
     hoveredTrack && tracksById.has(hoveredTrack.id) ? hoveredTrack : null;
   const validSelectedTrack =
     selectedTrack && tracksById.has(selectedTrack.id) ? selectedTrack : null;
+  const normalizedLibraryProgress = Math.max(
+    0,
+    Math.min(100, Math.round(libraryProgress)),
+  );
 
   if (songs.length === 0) {
     return (
-      <div className="flex h-dvh w-full items-center justify-center bg-gradient-to-br from-zinc-950 via-black to-zinc-900 text-sm text-zinc-500">
-        Loading your liked songs…
+      <div
+        className="flex h-dvh w-full items-center justify-center bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-6"
+        role="status"
+      >
+        <div className="w-full max-w-xs">
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <span className="text-zinc-400">Loading your liked songs…</span>
+            <span className="tabular-nums text-zinc-500">
+              {normalizedLibraryProgress}%
+            </span>
+          </div>
+          <div
+            aria-label="Liked songs loading progress"
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={normalizedLibraryProgress}
+            className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800"
+            role="progressbar"
+          >
+            <div
+              className="h-full rounded-full bg-green-500 transition-[width] duration-300"
+              style={{ width: `${normalizedLibraryProgress}%` }}
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -168,6 +217,24 @@ export default function SongMapClient({
   const selectedCandidate = validSelectedTrack
     ? candidateById.get(validSelectedTrack.id)
     : undefined;
+  const playDiscoveryCandidate = async (candidate: DiscoveryCandidate) => {
+    const playbackUris = buildPlaybackQueue(
+      discovery.candidates.map((item) => item.track),
+      candidate.track.id,
+    );
+
+    try {
+      await playTrack(candidate.track.uri, playbackUris.slice(1));
+      discovery.previewCandidate(candidate);
+      return true;
+    } catch (playbackError) {
+      console.error(
+        "Could not start the Nearby discoveries queue",
+        playbackError,
+      );
+      return false;
+    }
+  };
 
   return (
     <div
@@ -304,14 +371,11 @@ export default function SongMapClient({
             })
           }
           onPlaySong={
-            onPlaySong
+            onPlaySong || selectedCandidate
               ? async (track) => {
-                  const started = await onPlaySong(track);
                   const candidate = candidateById.get(track.id);
-                  if (candidate && started !== false) {
-                    discovery.previewCandidate(candidate);
-                  }
-                  return started;
+                  if (candidate) return playDiscoveryCandidate(candidate);
+                  return onPlaySong ? onPlaySong(track) : false;
                 }
               : undefined
           }
@@ -371,9 +435,7 @@ export default function SongMapClient({
         }}
         onFeedback={discovery.recordFeedback}
         onPlay={async (candidate) => {
-          if (!onPlaySong) return;
-          const started = await onPlaySong(candidate.track);
-          if (started !== false) discovery.previewCandidate(candidate);
+          await playDiscoveryCandidate(candidate);
         }}
         onSave={discovery.saveCandidate}
         onSelect={(candidate) => {

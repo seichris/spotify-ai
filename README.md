@@ -40,13 +40,13 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - Spotify OAuth login and required scopes; login notes Premium is needed for playback. `src/auth.ts` `src/app/login/page.tsx`
 - Loads liked songs, enriches with artist genres, caches in localStorage, supports infinite scroll and "load full library". `src/hooks/useSpotifyLibrary.ts` `src/components/Dashboard.tsx`
 - Per-song "Recommends": click a liked song to get Gemini analysis + similar tracks; cached suggestions; click a suggestion to play. `src/components/Dashboard.tsx` `src/app/actions.ts`
-- AI Playlist Sorter: clusters liked songs into vibe playlists, uses Gemini to name/describe and suggest tracks, creates Spotify playlists, adds liked + new tracks, and persists vibe state. `src/hooks/useVibePlaylists.ts` `src/app/actions.ts`
+- AI Playlist Sorter: turns the largest coherent Music Map neighborhoods into vibe playlists, uses Gemini only to name/describe them, and reuses the map's song-plus-neighborhood discovery, validation, scoring, and feedback-aware ranking for new tracks. `src/hooks/useVibePlaylists.ts` `src/lib/network/discoverMixedCandidates.ts` `src/app/actions.ts`
 - Library playlist: creates/updates a single "vibe-ordered" playlist of all liked songs. `src/hooks/useVibePlaylists.ts`
-- Network map: 2D genre clusters with artist connections and shuffleable layout. `src/components/SongNetwork.tsx`
+- Music Map: 2D genre clusters with artist connections and shuffleable layout. `src/components/SongNetwork.tsx`
 - Playback bar using Spotify Web Playback SDK (play/pause/skip). `src/hooks/useSpotifyPlayer.ts` `src/components/Dashboard.tsx`
 
 ## Gemini limits
 
 - Per-song requests send only the song name + artist; prompt asks for 5-10 similar songs. No explicit hard cap or token limit is set in code. `src/app/actions.ts` `src/lib/gemini.ts`
-- Vibe-plan requests send a summary capped to top 6 genres, top 6 artists, and up to 12 sample liked songs per cluster. `src/hooks/useVibePlaylists.ts`
-- Vibe-plan calls per run are capped by `MAX_VIBES = 6`, and each vibe playlist uses up to `NEW_SONGS_PER_VIBE = 10` suggestions. `src/hooks/useVibePlaylists.ts`
+- Vibe metadata requests send a summary capped to the map label, top 6 genres, top 6 artists, and up to 12 sample liked songs per neighborhood. `src/hooks/useVibePlaylists.ts`
+- Playlist creation is capped by `MAX_VIBES = 6`, skips incoherent islands, and mixes up to five song-seed plus five neighborhood-seed discoveries per playlist. `src/hooks/useVibePlaylists.ts` `src/lib/network/discoverMixedCandidates.ts`

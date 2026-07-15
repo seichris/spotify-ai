@@ -23,6 +23,7 @@ interface CreateDiscoveryContextOptions {
 const toSummary = (track: EnrichedTrack): DiscoveryTrackSummary => ({
   artistIds: track.artists.map((artist) => artist.id),
   artistNames: track.artists.map((artist) => artist.name),
+  features: track.features,
   genres: track.genres,
   id: track.id,
   name: track.name,
