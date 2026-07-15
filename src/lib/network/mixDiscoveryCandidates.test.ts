@@ -63,6 +63,20 @@ describe("mixDiscoveryCandidates", () => {
     expect(result.map((item) => item.track.id)).toEqual(["shared", "unique"]);
   });
 
+  it("honors an adaptive strategy allocation", () => {
+    const result = mixDiscoveryCandidates(
+      Array.from({ length: 8 }, (_, index) => candidate(`song-${index}`, "song")),
+      Array.from({ length: 8 }, (_, index) =>
+        candidate(`neighbor-${index}`, "neighborhood"),
+      ),
+      () => 0.999,
+      { neighborhood: 3, song: 7 },
+    );
+
+    expect(result.filter((item) => item.scope === "song")).toHaveLength(7);
+    expect(result.filter((item) => item.scope === "neighborhood")).toHaveLength(3);
+  });
+
   it("randomizes attribution when both strategies return the same track", () => {
     const mixWith = (overlapSelection: number) => {
       const values = [overlapSelection, 0.999];

@@ -37,8 +37,11 @@ describe("RecommendationStatsPage access", () => {
       exploration: [],
       overview: {
         disliked: 0,
+        impressions: 0,
         liked: 0,
         likeRate: null,
+        positiveRate: null,
+        ratingRate: null,
         total: 0,
         uniqueUsers: 0,
         updatedAt: null,

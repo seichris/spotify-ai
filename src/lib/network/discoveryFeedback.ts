@@ -1,10 +1,12 @@
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
+import { learnedRecommendationBoost } from "@/lib/network/recommendationLearning";
 import type {
   DiscoveryCandidate,
   DiscoveryEvent,
   DiscoveryEventType,
   DiscoverySessionState,
   ExplorationMode,
+  RecommendationLearningProfile,
 } from "@/types/network";
 
 export const DISCOVERY_SESSION_SCHEMA_VERSION = 2;
@@ -224,6 +226,7 @@ export const rerankDiscoveryCandidates = (
   likedTracks: EnrichedTrack[],
   exploration: ExplorationMode,
   events: DiscoveryEvent[],
+  learningProfile?: RecommendationLearningProfile,
 ) => {
   const likedArtistIds = new Set(
     likedTracks.flatMap((track) => track.artists.map((artist) => artist.id)),
@@ -250,14 +253,17 @@ export const rerankDiscoveryCandidates = (
         ) / artistIds.length
       : 0;
     const resolutionBonus = candidate.resolutionConfidence * 0.02;
+    const learnedBoost = learningProfile
+      ? learnedRecommendationBoost(candidate, knownArtist, learningProfile)
+      : 0;
 
     if (exploration === "familiar") {
-      return candidate.score * 1.2 + Number(knownArtist) * 0.07 + feedback * 0.05 + resolutionBonus;
+      return candidate.score * 1.2 + Number(knownArtist) * 0.07 + feedback * 0.05 + resolutionBonus + learnedBoost;
     }
     if (exploration === "adventurous") {
-      return candidate.score * 0.7 + Number(!knownArtist) * 0.15 + feedback * 0.08 + resolutionBonus;
+      return candidate.score * 0.7 + Number(!knownArtist) * 0.15 + feedback * 0.08 + resolutionBonus + learnedBoost;
     }
-    return candidate.score + Number(!knownArtist) * 0.05 + feedback * 0.07 + resolutionBonus;
+    return candidate.score + Number(!knownArtist) * 0.05 + feedback * 0.07 + resolutionBonus + learnedBoost;
   };
 
   return [...candidates].sort(

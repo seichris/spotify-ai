@@ -6,6 +6,8 @@ import {
   createPlaylistAction,
   getMapDiscoveryCandidatesAction,
   getRecommendationFeedbackStatsAction,
+  getRecommendationLearningProfileAction,
+  recordRecommendationImpressionsAction,
   recordRecommendationFeedbackAction,
   saveTracksToLibraryAction,
 } from "@/app/actions";
@@ -19,6 +21,10 @@ import {
   rerankDiscoveryCandidates,
   writeDiscoverySession,
 } from "@/lib/network/discoveryFeedback";
+import {
+  createEmptyRecommendationLearningProfile,
+  recommendationImpressionFor,
+} from "@/lib/network/recommendationLearning";
 import type {
   CandidateSaveState,
   DiscoveryCandidate,
@@ -79,6 +85,9 @@ export const useMapDiscovery = (
   >([]);
   const [hasRestored, setHasRestored] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [learningProfile, setLearningProfile] = useState(
+    createEmptyRecommendationLearningProfile,
+  );
   const [playlistStates, setPlaylistStates] = useState<
     Record<string, "adding" | "added" | "error">
   >({});
@@ -211,8 +220,10 @@ export const useMapDiscovery = (
           events,
           exploration,
           fetchCandidates: getMapDiscoveryCandidatesAction,
+          fetchLearningProfile: getRecommendationLearningProfileAction,
           graph,
           likedTracks,
+          onLearningProfile: setLearningProfile,
           selectedTrackId: selectedTrackId ?? "",
         });
         if (ranked.length === 0) {
@@ -227,6 +238,23 @@ export const useMapDiscovery = (
           setFeedbackStates({});
           setSummary(
             `${ranked.length} recommendations mixed from song and neighborhood matches.`,
+          );
+          const impressions = ranked.flatMap((candidate, rank) => {
+            const impression = recommendationImpressionFor(
+              candidate,
+              rank,
+              likedTracks,
+            );
+            return impression ? [impression] : [];
+          });
+          void recordRecommendationImpressionsAction(impressions).then(
+            (result) => {
+              if (!result.success && requestVersion.current === version) {
+                setFeedbackError(
+                  result.error ?? "Could not record recommendation impressions.",
+                );
+              }
+            },
           );
         }
       } catch (requestError) {
@@ -312,6 +340,18 @@ export const useMapDiscovery = (
           ),
           event,
         ].slice(-500));
+        if (feedback === "down") {
+          setCandidates((current) =>
+            current.filter(
+              (item) => item.recommendationId !== candidate.recommendationId,
+            ),
+          );
+          setDismissedTrackIds((current) =>
+            current.includes(candidate.track.id)
+              ? current
+              : [...current, candidate.track.id].slice(-500),
+          );
+        }
       } catch (feedbackRequestError) {
         setCandidates((current) =>
           current.map((item) =>
@@ -474,10 +514,16 @@ export const useMapDiscovery = (
     (mode: ExplorationMode) => {
       setExploration(mode);
       setCandidates((current) =>
-        rerankDiscoveryCandidates(current, likedTracks, mode, events),
+        rerankDiscoveryCandidates(
+          current,
+          likedTracks,
+          mode,
+          events,
+          learningProfile,
+        ),
       );
     },
-    [events, likedTracks],
+    [events, learningProfile, likedTracks],
   );
 
   const clearCandidates = useCallback(() => {
@@ -503,6 +549,7 @@ export const useMapDiscovery = (
     setFeedbackError(null);
     setFeedbackStates({});
     setIsLoading(false);
+    setLearningProfile(createEmptyRecommendationLearningProfile());
     setPlaylistStates({});
     setSaveStates({});
     setSummary("");

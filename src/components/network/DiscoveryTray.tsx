@@ -44,7 +44,9 @@ interface DiscoveryTrayProps {
 
 const statsLabel = (stats: RecommendationStrategyStats | undefined) => {
   if (!stats || stats.likeRate === null) return "No ratings yet";
-  return `${Math.round(stats.likeRate * 100)}% liked (${stats.total})`;
+  return stats.impressions > 0
+    ? `${Math.round(stats.likeRate * 100)}% liked · ${stats.total}/${stats.impressions} rated`
+    : `${Math.round(stats.likeRate * 100)}% liked (${stats.total} ratings)`;
 };
 
 export default function DiscoveryTray({

@@ -11,6 +11,7 @@ import type {
   DiscoveryEvent,
 } from "@/types/network";
 import { makeTrack, networkFixtureTracks } from "@/lib/network/__tests__/fixtures";
+import { createEmptyRecommendationLearningProfile } from "@/lib/network/recommendationLearning";
 
 const makeCandidate = (
   id: string,
@@ -150,5 +151,28 @@ describe("feedback-aware discovery ranking", () => {
     );
 
     expect(reranked.recommendationExploration).toBe("balanced");
+  });
+
+  it("uses durable learned affinities when local candidates otherwise tie", () => {
+    const preferred = makeCandidate("preferred", "artist-preferred");
+    const avoided = makeCandidate("avoided", "artist-avoided");
+    const profile = {
+      ...createEmptyRecommendationLearningProfile(),
+      artistAffinities: {
+        "artist-avoided": -1,
+        "artist-preferred": 1,
+      },
+      sampleSize: 4,
+    };
+
+    expect(
+      rerankDiscoveryCandidates(
+        [avoided, preferred],
+        networkFixtureTracks,
+        "balanced",
+        [],
+        profile,
+      )[0].track.id,
+    ).toBe("preferred");
   });
 });

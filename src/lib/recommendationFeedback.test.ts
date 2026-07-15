@@ -56,6 +56,8 @@ describe("getRecommendationFeedbackDashboard", () => {
           disliked: "1",
         },
       ],
+      [{ strategy: "song", impressions: "10" }],
+      [{ impressions: "10" }],
     ]);
 
     await expect(getRecommendationFeedbackDashboard()).resolves.toEqual({
@@ -80,8 +82,11 @@ describe("getRecommendationFeedbackDashboard", () => {
       ],
       overview: {
         disliked: 1,
+        impressions: 10,
         liked: 3,
         likeRate: 0.75,
+        positiveRate: 0.3,
+        ratingRate: 0.4,
         total: 4,
         uniqueUsers: 2,
         updatedAt: "2026-07-14T10:00:00.000Z",
@@ -89,15 +94,21 @@ describe("getRecommendationFeedbackDashboard", () => {
       strategies: [
         {
           disliked: 1,
+          impressions: 10,
           liked: 3,
           likeRate: 0.75,
+          positiveRate: 0.3,
+          ratingRate: 0.4,
           strategy: "song",
           total: 4,
         },
         {
           disliked: 0,
+          impressions: 0,
           liked: 0,
           likeRate: null,
+          positiveRate: null,
+          ratingRate: null,
           strategy: "neighborhood",
           total: 0,
         },
@@ -107,7 +118,7 @@ describe("getRecommendationFeedbackDashboard", () => {
       expect.any(Array),
       { isolationLevel: "RepeatableRead", readOnly: true },
     );
-    expect(mocks.transaction.mock.calls[0][0]).toHaveLength(4);
+    expect(mocks.transaction.mock.calls[0][0]).toHaveLength(6);
     const queries = mocks.transaction.mock.calls[0][0].map(
       ({ query }: { query: string }) => query.replace(/\s+/g, " ").trim(),
     );
@@ -115,6 +126,9 @@ describe("getRecommendationFeedbackDashboard", () => {
     expect(queries[1]).toContain("COUNT(DISTINCT user_id)");
     expect(queries[2]).toContain("GROUP BY exploration");
     expect(queries[3]).toContain("updated_at >= NOW() - INTERVAL '30 days'");
+    expect(queries[4]).toContain("recommendation_impressions");
+    expect(queries[4]).toContain("UNION");
+    expect(queries[5]).toContain("recommendation_exposures");
   });
 
   it("returns stable empty dashboard values", async () => {
@@ -131,6 +145,8 @@ describe("getRecommendationFeedbackDashboard", () => {
       ],
       [],
       [],
+      [],
+      [{ impressions: 0 }],
     ]);
 
     await expect(getRecommendationFeedbackDashboard()).resolves.toMatchObject({
@@ -138,15 +154,32 @@ describe("getRecommendationFeedbackDashboard", () => {
       exploration: [],
       overview: {
         disliked: 0,
+        impressions: 0,
         liked: 0,
         likeRate: null,
+        positiveRate: null,
+        ratingRate: null,
         total: 0,
         uniqueUsers: 0,
         updatedAt: null,
       },
       strategies: [
-        { strategy: "song", total: 0, likeRate: null },
-        { strategy: "neighborhood", total: 0, likeRate: null },
+        {
+          impressions: 0,
+          positiveRate: null,
+          ratingRate: null,
+          strategy: "song",
+          total: 0,
+          likeRate: null,
+        },
+        {
+          impressions: 0,
+          positiveRate: null,
+          ratingRate: null,
+          strategy: "neighborhood",
+          total: 0,
+          likeRate: null,
+        },
       ],
     });
   });

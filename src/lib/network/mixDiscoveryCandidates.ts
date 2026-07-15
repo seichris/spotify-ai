@@ -1,4 +1,5 @@
 import type { DiscoveryCandidate } from "@/types/network";
+import type { RecommendationStrategyAllocation } from "@/lib/network/recommendationLearning";
 
 const shuffle = (
   candidates: DiscoveryCandidate[],
@@ -16,10 +17,11 @@ export const mixDiscoveryCandidates = (
   songCandidates: DiscoveryCandidate[],
   neighborhoodCandidates: DiscoveryCandidate[],
   random: () => number = Math.random,
+  allocation: RecommendationStrategyAllocation = { neighborhood: 5, song: 5 },
 ) => {
   const mixed = [
-    ...songCandidates.slice(0, 5),
-    ...neighborhoodCandidates.slice(0, 5),
+    ...songCandidates.slice(0, allocation.song),
+    ...neighborhoodCandidates.slice(0, allocation.neighborhood),
   ];
   const byTrack = new Map<string, DiscoveryCandidate[]>();
   mixed.forEach((candidate) => {
