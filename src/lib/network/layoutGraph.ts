@@ -1,5 +1,6 @@
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import noverlap from "graphology-layout-noverlap";
+import { separateNodeCollisions } from "@/lib/network/collisionPlacement";
 import {
   GRAPH_LAYOUT_CONFIG,
   GRAPH_NOVERLAP_CONFIG,
@@ -122,6 +123,7 @@ export const layoutSongGraph = (
   placeIsolates(graph);
   if (graph.order > 1) {
     noverlap.assign(graph, GRAPH_NOVERLAP_CONFIG);
+    separateNodeCollisions(graph);
   }
   return { cacheHit: false, positions: readPositions(graph) };
 };

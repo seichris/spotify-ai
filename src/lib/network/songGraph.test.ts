@@ -1,3 +1,4 @@
+import Graph from "graphology";
 import { describe, expect, it } from "vitest";
 import { buildClusterProfiles } from "@/lib/network/buildClusterProfiles";
 import { buildFeatures, normalizeLibrary } from "@/lib/network/buildFeatures";
@@ -6,6 +7,7 @@ import {
   type SongGraph,
 } from "@/lib/network/buildGraph";
 import { buildSongGraph } from "@/lib/network/buildSongGraph";
+import { separateNodeCollisions } from "@/lib/network/collisionPlacement";
 import {
   calculateSimilarity,
   calculateTempoSimilarity,
@@ -169,6 +171,59 @@ describe("sparse graph construction and communities", () => {
 });
 
 describe("layout and graph cache", () => {
+  it("deterministically separates residual collisions after iterative layouts", () => {
+    const graph = constructSongGraph(networkFixtureTracks.slice(0, 3)).graph;
+    graph.forEachNode((node) => {
+      graph.mergeNodeAttributes(node, { x: 0, y: 0 });
+    });
+
+    separateNodeCollisions(graph);
+
+    expectNoNodeOverlaps(graph);
+  });
+
+  it("keeps a dense large-library layout free of node collisions", () => {
+    const graph = new Graph({ type: "undirected" }) as SongGraph;
+    const nodeCount = 600;
+    for (let index = 0; index < nodeCount; index += 1) {
+      const angle = index * Math.PI * (3 - Math.sqrt(5));
+      const radius = 1.5 + Math.sqrt(Math.floor(index / 8)) * 1.4;
+      graph.addNode(String(index), {
+        albumId: `album-${index}`,
+        albumName: `Album ${index}`,
+        artistIds: [`artist-${index}`],
+        artistNames: [`Artist ${index}`],
+        color: "#71717a",
+        genres: [],
+        kind: "liked",
+        label: `Track ${index}`,
+        size: 6,
+        type: "image",
+        uri: `spotify:track:${index}`,
+        x: Math.cos(angle) * radius + (index % 8) * 2,
+        y: Math.sin(angle) * radius,
+      });
+      if (index === 0) continue;
+      graph.addEdge(String(index), String(Math.floor((index - 1) / 2)), {
+        color: "#52525b",
+        evidence: {
+          album: 0,
+          artist: 0,
+          genre: 0,
+          reasonCodes: [],
+          sharedGenres: [],
+        },
+        hidden: true,
+        size: 1,
+        weight: 1,
+      });
+    }
+
+    layoutSongGraph(graph);
+
+    expectNoNodeOverlaps(graph);
+  });
+
   it("creates finite layout coordinates and restores an exact cached layout", () => {
     const firstGraph = constructSongGraph(networkFixtureTracks).graph;
     const first = layoutSongGraph(firstGraph);
