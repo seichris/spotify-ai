@@ -10,7 +10,7 @@ import {
 } from "@react-sigma/core";
 import { createNodeImageProgram } from "@sigma/node-image";
 import { X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   drawDiscNodeHover,
   type NodeHoverDrawingFunction,
@@ -109,6 +109,8 @@ export default function SongMapClient({
   songs,
 }: SongMapProps) {
   const [hoveredTrack, setHoveredTrack] = useState<EnrichedTrack | null>(null);
+  const pendingDiscoveryTrackId = useRef<string | null>(null);
+  const runningDiscoveryTrackId = useRef<string | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<EnrichedTrack | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<ClusterProfile | null>(
     null,
@@ -123,10 +125,11 @@ export default function SongMapClient({
     stage,
     stats,
   } = useSongGraph(songs);
-  const discovery = useMapDiscovery(similarityGraph, songs, {
+  const discoveryGraph = similarityGraph ?? (graphError ? previewGraph : null);
+  const discovery = useMapDiscovery(discoveryGraph, songs, {
     onCandidateSaved,
   });
-  const { discover } = discovery;
+  const { discover, hasRestored } = discovery;
   const isDiscoveryBusy =
     discovery.isLoading ||
     discovery.isFeedbackPending ||
@@ -154,12 +157,45 @@ export default function SongMapClient({
       window.removeEventListener("beforeunload", preventNavigation);
     };
   }, [isDiscoveryBusy]);
+  const startDiscovery = useCallback(
+    (selectedTrackId: string) => {
+      if (runningDiscoveryTrackId.current) {
+        if (runningDiscoveryTrackId.current !== selectedTrackId) {
+          pendingDiscoveryTrackId.current = selectedTrackId;
+        }
+        return;
+      }
+
+      pendingDiscoveryTrackId.current = null;
+      const request = discover({ selectedTrackId });
+      if (!request) {
+        pendingDiscoveryTrackId.current = selectedTrackId;
+        return;
+      }
+
+      runningDiscoveryTrackId.current = selectedTrackId;
+      void request.finally(() => {
+        if (runningDiscoveryTrackId.current === selectedTrackId) {
+          runningDiscoveryTrackId.current = null;
+        }
+      });
+    },
+    [discover],
+  );
+  useEffect(() => {
+    const selectedTrackId = pendingDiscoveryTrackId.current;
+    if (!selectedTrackId || !discoveryGraph || !hasRestored || isDiscoveryBusy) {
+      return;
+    }
+
+    startDiscovery(selectedTrackId);
+  }, [discoveryGraph, hasRestored, isDiscoveryBusy, startDiscovery]);
   const graph = useMemo(
     () =>
-      similarityGraph
-        ? placeCandidates(similarityGraph, discovery.candidates)
+      discoveryGraph
+        ? placeCandidates(discoveryGraph, discovery.candidates)
         : previewGraph,
-    [discovery.candidates, previewGraph, similarityGraph],
+    [discovery.candidates, discoveryGraph, previewGraph],
   );
   const candidateById = useMemo(
     () =>
@@ -190,14 +226,31 @@ export default function SongMapClient({
   const selectMapTrack = useCallback(
     (track: EnrichedTrack | null) => {
       setSelectedTrack(track);
+      pendingDiscoveryTrackId.current = null;
       if (!track) return;
 
       setSelectedCluster(null);
-      if (!candidateById.has(track.id)) {
-        void discover({ selectedTrackId: track.id });
+      if (candidateById.has(track.id)) return;
+      if (runningDiscoveryTrackId.current) {
+        if (runningDiscoveryTrackId.current !== track.id) {
+          pendingDiscoveryTrackId.current = track.id;
+        }
+        return;
+      }
+
+      if (discoveryGraph && hasRestored && !isDiscoveryBusy) {
+        startDiscovery(track.id);
+      } else {
+        pendingDiscoveryTrackId.current = track.id;
       }
     },
-    [candidateById, discover],
+    [
+      candidateById,
+      discoveryGraph,
+      hasRestored,
+      isDiscoveryBusy,
+      startDiscovery,
+    ],
   );
   const selectableTracks = useMemo(
     () =>
@@ -316,7 +369,7 @@ export default function SongMapClient({
         onChange={discovery.changeExploration}
         onReset={() => {
           discovery.resetFeedback();
-          if (selectedCandidate) setSelectedTrack(null);
+          if (selectedCandidate) selectMapTrack(null);
         }}
       />
 
@@ -364,6 +417,7 @@ export default function SongMapClient({
             value={selectedCluster?.id ?? ""}
             onChange={(event) => {
               setHoveredTrack(null);
+              pendingDiscoveryTrackId.current = null;
               setSelectedTrack(null);
               setSelectedCluster(
                 clusters.find((cluster) => cluster.id === event.target.value) ??
@@ -399,10 +453,10 @@ export default function SongMapClient({
           )}
           isDiscovering={isDiscoveryBusy}
           onAddCandidateToPlaylist={discovery.addCandidateToPlaylist}
-          onClear={() => setSelectedTrack(null)}
+          onClear={() => selectMapTrack(null)}
           onDismissCandidate={(trackId) => {
             discovery.dismissCandidate(trackId);
-            if (selectedTrack?.id === trackId) setSelectedTrack(null);
+            if (selectedTrack?.id === trackId) selectMapTrack(null);
           }}
           onPlaySong={
             onPlaySong || selectedCandidate
@@ -461,11 +515,11 @@ export default function SongMapClient({
         onAddToPlaylist={discovery.addCandidateToPlaylist}
         onClear={() => {
           discovery.clearCandidates();
-          if (selectedCandidate) setSelectedTrack(null);
+          if (selectedCandidate) selectMapTrack(null);
         }}
         onDismiss={(trackId) => {
           discovery.dismissCandidate(trackId);
-          if (selectedTrack?.id === trackId) setSelectedTrack(null);
+          if (selectedTrack?.id === trackId) selectMapTrack(null);
         }}
         onFeedback={discovery.recordFeedback}
         onPlay={async (candidate) => {
@@ -474,6 +528,7 @@ export default function SongMapClient({
         onSave={discovery.saveCandidate}
         onSelect={(candidate) => {
           discovery.selectCandidate(candidate);
+          pendingDiscoveryTrackId.current = null;
           setSelectedCluster(null);
           setSelectedTrack(candidate.track);
         }}
