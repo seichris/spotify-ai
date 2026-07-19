@@ -10,7 +10,7 @@ import {
 } from "@react-sigma/core";
 import { createNodeImageProgram } from "@sigma/node-image";
 import { X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   drawDiscNodeHover,
   type NodeHoverDrawingFunction,
@@ -126,6 +126,7 @@ export default function SongMapClient({
   const discovery = useMapDiscovery(similarityGraph, songs, {
     onCandidateSaved,
   });
+  const { discover } = discovery;
   const isDiscoveryBusy =
     discovery.isLoading ||
     discovery.isFeedbackPending ||
@@ -185,6 +186,18 @@ export default function SongMapClient({
         [...songs, ...mappedCandidateTracks].map((track) => [track.id, track]),
       ),
     [mappedCandidateTracks, songs],
+  );
+  const selectMapTrack = useCallback(
+    (track: EnrichedTrack | null) => {
+      setSelectedTrack(track);
+      if (!track) return;
+
+      setSelectedCluster(null);
+      if (!candidateById.has(track.id)) {
+        void discover({ selectedTrackId: track.id });
+      }
+    },
+    [candidateById, discover],
   );
   const selectableTracks = useMemo(
     () =>
@@ -274,10 +287,7 @@ export default function SongMapClient({
       <SigmaContainer graph={graph} settings={SIGMA_SETTINGS}>
         <MapEvents
           onHover={setHoveredTrack}
-          onSelect={(track) => {
-            setSelectedTrack(track);
-            if (track) setSelectedCluster(null);
-          }}
+          onSelect={selectMapTrack}
           tracksById={tracksById}
         />
         <NeighborhoodHighlight focusNodeId={focusNodeId} />
@@ -312,7 +322,8 @@ export default function SongMapClient({
 
       <p id="song-map-instructions" className="sr-only">
         Pan and zoom the map with a pointer, or use the song picker to select a
-        track with the keyboard. Selected songs expose playback controls.
+        track with the keyboard. Selecting a liked song starts discovery and
+        exposes playback controls.
       </p>
 
       {stats && (
@@ -331,8 +342,7 @@ export default function SongMapClient({
           value={validSelectedTrack?.id ?? ""}
           onChange={(event) => {
             const track = tracksById.get(event.target.value) ?? null;
-            setSelectedTrack(track);
-            if (track) setSelectedCluster(null);
+            selectMapTrack(track);
           }}
         >
           <option value="">Choose a song…</option>
@@ -394,11 +404,6 @@ export default function SongMapClient({
             discovery.dismissCandidate(trackId);
             if (selectedTrack?.id === trackId) setSelectedTrack(null);
           }}
-          onDiscover={() =>
-            discovery.discover({
-              selectedTrackId: activeTrack.id,
-            })
-          }
           onPlaySong={
             onPlaySong || selectedCandidate
               ? async (track) => {
