@@ -26,6 +26,9 @@ interface RegisteredMapEvents {
 }
 
 const mocks = vi.hoisted(() => ({
+  cameraAnimate: vi.fn(),
+  cameraIsAnimated: false,
+  cameraState: { angle: 0, ratio: 1, x: 0.5, y: 0.5 },
   discovery: null as unknown as DiscoveryState,
   discoveryGraphs: [] as DiscoveryGraph[],
   discoveryTrayProps: null as DiscoveryTrayProps | null,
@@ -57,7 +60,17 @@ vi.mock("@react-sigma/core", () => {
       mocks.events = events;
     },
     useSigma: () => ({
+      getCamera: () => ({
+        animate: mocks.cameraAnimate,
+        getState: () => mocks.cameraState,
+        isAnimated: () => mocks.cameraIsAnimated,
+      }),
       getContainer: () => mocks.sigmaContainer,
+      getNodeDisplayData: (node: string) => ({
+        size: 12,
+        x: node === "liked-b" ? 0.75 : 0.25,
+        y: node === "liked-b" ? 0.6 : 0.4,
+      }),
     }),
   };
 });
@@ -177,6 +190,32 @@ const candidate: DiscoveryCandidate = {
   status: "unseen",
   track: candidateTrack,
 };
+const candidateTrackB = makeTrack(
+  "candidate-b",
+  "Candidate B",
+  "artist-candidate-b",
+  "Candidate Artist B",
+  ["dream pop"],
+);
+const candidateTrackC = makeTrack(
+  "candidate-c",
+  "Candidate C",
+  "artist-candidate-c",
+  "Candidate Artist C",
+  ["dream pop"],
+);
+const candidateB: DiscoveryCandidate = {
+  ...candidate,
+  proposal: { ...candidate.proposal, title: "Candidate B" },
+  recommendationId: "candidate-b-recommendation",
+  track: candidateTrackB,
+};
+const candidateC: DiscoveryCandidate = {
+  ...candidate,
+  proposal: { ...candidate.proposal, title: "Candidate C" },
+  recommendationId: "candidate-c-recommendation",
+  track: candidateTrackC,
+};
 
 const createDiscoveryState = (): DiscoveryState => ({
   addCandidateToPlaylist: vi.fn(),
@@ -239,6 +278,9 @@ describe("Music Map discovery selection", () => {
 
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    mocks.cameraAnimate.mockReset();
+    mocks.cameraIsAnimated = false;
+    mocks.cameraState = { angle: 0, ratio: 1, x: 0.5, y: 0.5 };
     mocks.discovery = createDiscoveryState();
     mocks.discoveryGraphs = [];
     mocks.discoveryTrayProps = null;
@@ -300,6 +342,15 @@ describe("Music Map discovery selection", () => {
     expect(mocks.discovery.discover).toHaveBeenNthCalledWith(2, {
       selectedTrackId: likedTrackB.id,
     });
+    expect(mocks.cameraAnimate).toHaveBeenLastCalledWith(
+      { x: 0.75, y: 0.6 },
+      { duration: 350 },
+    );
+    expect(mocks.cameraAnimate).toHaveBeenCalledOnce();
+
+    mocks.discovery.candidates = [candidate];
+    await renderMap();
+    expect(mocks.cameraAnimate).toHaveBeenCalledOnce();
   });
 
   it("waits for the similarity graph before discovering the selected song", async () => {
@@ -325,6 +376,31 @@ describe("Music Map discovery selection", () => {
       selectedTrackId: likedTrackA.id,
     });
     expect(mocks.discoveryGraphs.at(-1)).toBe(mocks.songGraph.graph);
+  });
+
+  it("cancels a pending keyboard focus animation on pointer selection", async () => {
+    await renderMap();
+    const picker = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Choose a song on the map"]',
+    );
+    await act(async () => {
+      if (!picker) return;
+      picker.value = likedTrackB.id;
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(mocks.cameraAnimate).toHaveBeenCalledWith(
+      { x: 0.75, y: 0.6 },
+      { duration: 350 },
+    );
+
+    mocks.cameraIsAnimated = true;
+    mocks.cameraState = { angle: 0, ratio: 1, x: 0.63, y: 0.55 };
+    await clickMapNode(likedTrackA.id);
+    expect(mocks.cameraAnimate).toHaveBeenLastCalledWith(
+      mocks.cameraState,
+      { duration: 1 },
+    );
+    expect(mocks.selectedNodeActionsProps?.track).toBe(likedTrackA);
   });
 
   it("waits for local discovery history to restore", async () => {
@@ -485,5 +561,78 @@ describe("Music Map discovery selection", () => {
 
     expect(onPlaySong).toHaveBeenCalledWith(likedTrackA);
     expect(mocks.player.queueTrack).toHaveBeenCalledWith(likedTrackA.uri);
+  });
+
+  it("disables candidate playback while discovery is busy", async () => {
+    mocks.discovery.candidates = [candidate];
+    mocks.discovery.isLoading = true;
+    await renderMap();
+    await clickMapNode(candidateTrack.id);
+
+    expect(mocks.selectedNodeActionsProps?.track).toBe(candidateTrack);
+    expect(mocks.selectedNodeActionsProps?.playDisabled).toBe(true);
+    expect(mocks.player.playTrack).not.toHaveBeenCalled();
+    expect(mocks.discovery.previewCandidate).not.toHaveBeenCalled();
+  });
+
+  it("uses the rotated discovery queue for an idle selected candidate", async () => {
+    mocks.discovery.candidates = [candidateB, candidate, candidateC];
+    await renderMap();
+    await clickMapNode(candidateTrack.id);
+
+    expect(mocks.selectedNodeActionsProps?.track).toBe(candidateTrack);
+    expect(mocks.selectedNodeActionsProps?.playDisabled).toBe(false);
+    await act(async () => {
+      await mocks.selectedNodeActionsProps?.onPlay(candidateTrack);
+    });
+
+    expect(mocks.player.playTrack).toHaveBeenCalledWith(candidateTrack.uri, [
+      candidateTrackC.uri,
+      candidateTrackB.uri,
+    ]);
+    expect(mocks.discovery.previewCandidate).toHaveBeenCalledWith(candidate);
+  });
+
+  it("records a candidate preview before starting a queued discovery", async () => {
+    const playback = createDeferred();
+    mocks.discovery.candidates = [candidate];
+    mocks.player.playTrack = vi.fn(() => playback.promise);
+    await renderMap();
+    await clickMapNode(candidateTrack.id);
+
+    let playbackRequest: Promise<void> | undefined;
+    await act(async () => {
+      playbackRequest = mocks.selectedNodeActionsProps?.onPlay(candidateTrack);
+    });
+    await clickMapNode(likedTrackA.id);
+    expect(mocks.discovery.discover).not.toHaveBeenCalled();
+
+    playback.resolve();
+    await act(async () => playbackRequest);
+    expect(mocks.discovery.previewCandidate).toHaveBeenCalledWith(candidate);
+    expect(mocks.discovery.discover).toHaveBeenCalledWith({
+      selectedTrackId: likedTrackA.id,
+    });
+    expect(
+      mocks.discovery.previewCandidate.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.discovery.discover.mock.invocationCallOrder[0]);
+  });
+
+  it("does not advertise removed neighbor evidence to screen readers", async () => {
+    mocks.songGraph.stats = {
+      cacheHit: false,
+      candidatePairs: 3,
+      clusterCount: 1,
+      edgeCount: 2,
+      isolatedNodeCount: 0,
+      neighborhoodCount: 1,
+      nodeCount: 3,
+      sameArtistEdgeCount: 1,
+    };
+    await renderMap();
+
+    expect(container.textContent).not.toContain(
+      "inspect a song to read the evidence for its strongest neighbors",
+    );
   });
 });

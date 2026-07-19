@@ -20,7 +20,7 @@ export default function GraphLoader({
   stage,
 }: GraphLoaderProps) {
   return (
-    <div className="absolute inset-x-3 top-14 z-20 rounded-xl border border-white/10 bg-black/80 p-3 shadow-xl backdrop-blur-md">
+    <div className="pointer-events-none absolute inset-x-3 top-14 z-20 rounded-xl border border-white/10 bg-black/80 p-3 shadow-xl backdrop-blur-md">
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className={error ? "text-red-300" : "text-zinc-200"}>
           {error ? "Using the preview map" : STAGE_LABELS[stage]}
