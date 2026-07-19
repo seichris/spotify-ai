@@ -206,7 +206,7 @@ export const useMapDiscovery = (
   );
 
   const discover = useCallback(
-    async ({ selectedTrackId }: DiscoveryRequest) => {
+    ({ selectedTrackId }: DiscoveryRequest) => {
       if (
         !graph ||
         isLoading ||
@@ -215,7 +215,7 @@ export const useMapDiscovery = (
         playlistRequests.current.size > 0 ||
         saveRequests.current.size > 0
       ) {
-        return;
+        return null;
       }
       const version = requestVersion.current + 1;
       requestVersion.current = version;
@@ -224,64 +224,66 @@ export const useMapDiscovery = (
       setError(null);
       setFeedbackError(null);
 
-      try {
-        const ranked = await discoverMixedCandidates({
-          dismissedTrackIds,
-          events,
-          exploration,
-          fetchCandidates: getMapDiscoveryCandidatesAction,
-          fetchLearningProfile: getRecommendationLearningProfileAction,
-          graph,
-          likedTracks,
-          onLearningProfile: setLearningProfile,
-          requireLearningProfile: true,
-          selectedTrackId: selectedTrackId ?? "",
-        });
-        if (ranked.length === 0) {
-          throw new Error("No new Spotify matches survived validation.");
-        }
-        if (requestVersion.current === version) {
-          const impressionResult = await persistRecommendationImpressionBatch(
-            ranked,
+      return (async () => {
+        try {
+          const ranked = await discoverMixedCandidates({
+            dismissedTrackIds,
+            events,
+            exploration,
+            fetchCandidates: getMapDiscoveryCandidatesAction,
+            fetchLearningProfile: getRecommendationLearningProfileAction,
+            graph,
             likedTracks,
-            recordRecommendationImpressionsAction,
-          );
-          if (requestVersion.current !== version) return;
-          if (impressionResult.error) {
-            throw new Error(impressionResult.error);
+            onLearningProfile: setLearningProfile,
+            requireLearningProfile: true,
+            selectedTrackId: selectedTrackId ?? "",
+          });
+          if (ranked.length === 0) {
+            throw new Error("No new Spotify matches survived validation.");
           }
-          setFeedbackStats((current) =>
-            impressionResult.stats ??
-            recommendationStatsAfterImpressions(
-              current,
-              impressionResult.impressions,
-            ),
-          );
-          setCandidates(ranked);
-          setEvents((current) => [
-            ...current,
-            ...ranked.map((candidate) => eventFor(candidate, "candidate_shown")),
-          ].slice(-500));
-          setFeedbackStates({});
-          setSummary(
-            `${ranked.length} recommendations mixed from song and neighborhood matches.`,
-          );
-          setFeedbackError(null);
+          if (requestVersion.current === version) {
+            const impressionResult = await persistRecommendationImpressionBatch(
+              ranked,
+              likedTracks,
+              recordRecommendationImpressionsAction,
+            );
+            if (requestVersion.current !== version) return;
+            if (impressionResult.error) {
+              throw new Error(impressionResult.error);
+            }
+            setFeedbackStats((current) =>
+              impressionResult.stats ??
+              recommendationStatsAfterImpressions(
+                current,
+                impressionResult.impressions,
+              ),
+            );
+            setCandidates(ranked);
+            setEvents((current) => [
+              ...current,
+              ...ranked.map((candidate) => eventFor(candidate, "candidate_shown")),
+            ].slice(-500));
+            setFeedbackStates({});
+            setSummary(
+              `${ranked.length} recommendations mixed from song and neighborhood matches.`,
+            );
+            setFeedbackError(null);
+          }
+        } catch (requestError) {
+          if (requestVersion.current === version) {
+            setError(
+              requestError instanceof Error
+                ? requestError.message
+                : "Could not find nearby discoveries.",
+            );
+          }
+        } finally {
+          if (runningDiscovery.current === version) {
+            runningDiscovery.current = null;
+          }
+          if (requestVersion.current === version) setIsLoading(false);
         }
-      } catch (requestError) {
-        if (requestVersion.current === version) {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Could not find nearby discoveries.",
-          );
-        }
-      } finally {
-        if (runningDiscovery.current === version) {
-          runningDiscovery.current = null;
-        }
-        if (requestVersion.current === version) setIsLoading(false);
-      }
+      })();
     },
     [
       dismissedTrackIds,

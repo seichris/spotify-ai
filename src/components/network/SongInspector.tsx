@@ -1,4 +1,4 @@
-import { HeartPlus, ListPlus, Play, Sparkles, X } from "lucide-react";
+import { HeartPlus, ListPlus, Play, X } from "lucide-react";
 import type Graph from "graphology";
 import SimilarityExplanation from "@/components/network/SimilarityExplanation";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
@@ -21,7 +21,6 @@ interface SongInspectorProps {
   onAddCandidateToPlaylist?: (candidate: DiscoveryCandidate) => void;
   onClear: () => void;
   onDismissCandidate?: (trackId: string) => void;
-  onDiscover?: () => void;
   onPlaySong?: (track: EnrichedTrack) => boolean | Promise<boolean>;
   onSaveCandidate?: (candidate: DiscoveryCandidate) => void;
   tracksById: Map<string, EnrichedTrack>;
@@ -38,7 +37,6 @@ export default function SongInspector({
   onAddCandidateToPlaylist,
   onClear,
   onDismissCandidate,
-  onDiscover,
   onPlaySong,
   onSaveCandidate,
   tracksById,
@@ -109,16 +107,6 @@ export default function SongInspector({
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               Play song
-            </button>
-          )}
-          {!candidate && onDiscover && (
-            <button
-              type="button"
-              onClick={onDiscover}
-              disabled={isDiscovering}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-            >
-              <Sparkles className="h-3.5 w-3.5" /> Discover 10 new songs
             </button>
           )}
           {candidate && (
