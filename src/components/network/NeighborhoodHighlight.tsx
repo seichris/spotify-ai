@@ -3,12 +3,10 @@ import { useEffect } from "react";
 
 interface NeighborhoodHighlightProps {
   focusNodeId: string | null;
-  selectedNodeId?: string | null;
 }
 
 export default function NeighborhoodHighlight({
   focusNodeId,
-  selectedNodeId,
 }: NeighborhoodHighlightProps) {
   const sigma = useSigma();
 
@@ -24,31 +22,14 @@ export default function NeighborhoodHighlight({
         return;
       }
 
-      const hasFocus = Boolean(focusNodeId && graph.hasNode(focusNodeId));
-      const hasSelection = Boolean(
-        selectedNodeId && graph.hasNode(selectedNodeId),
-      );
-      if (!hasFocus && !hasSelection) {
+      if (!focusNodeId || !graph.hasNode(focusNodeId)) {
         sigma.setSettings({ edgeReducer: null, nodeReducer: null });
         return;
       }
 
-      const neighbors =
-        focusNodeId && hasFocus
-          ? new Set(graph.neighbors(focusNodeId))
-          : new Set<string>();
+      const neighbors = new Set(graph.neighbors(focusNodeId));
       sigma.setSettings({
         nodeReducer: (node, data) => {
-          if (node === selectedNodeId) {
-            return {
-              ...data,
-              forceLabel: false,
-              highlighted: true,
-              label: "",
-              size: data.size * 1.45,
-              zIndex: 2,
-            };
-          }
           if (node === focusNodeId) {
             return {
               ...data,
@@ -70,9 +51,7 @@ export default function NeighborhoodHighlight({
         },
         edgeReducer: (edge, data) => {
           const [source, target] = graph.extremities(edge);
-          const visible = hasFocus
-            ? source === focusNodeId || target === focusNodeId
-            : true;
+          const visible = source === focusNodeId || target === focusNodeId;
           return {
             ...data,
             color: visible ? "#a1a1aa" : data.color,
@@ -86,7 +65,7 @@ export default function NeighborhoodHighlight({
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [focusNodeId, selectedNodeId, sigma]);
+  }, [focusNodeId, sigma]);
 
   return null;
 }

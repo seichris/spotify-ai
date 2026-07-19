@@ -14,8 +14,8 @@ type DiscoveryGraph = Parameters<typeof UseMapDiscovery>[0];
 type DiscoveryTrayProps = ComponentProps<
   typeof import("@/components/network/DiscoveryTray").default
 >;
-type SelectedNodeActionsProps = ComponentProps<
-  typeof import("@/components/network/SelectedNodeActions").default
+type SongInspectorProps = ComponentProps<
+  typeof import("@/components/network/SongInspector").default
 >;
 
 interface RegisteredMapEvents {
@@ -26,9 +26,6 @@ interface RegisteredMapEvents {
 }
 
 const mocks = vi.hoisted(() => ({
-  cameraAnimate: vi.fn(),
-  cameraIsAnimated: false,
-  cameraState: { angle: 0, ratio: 1, x: 0.5, y: 0.5 },
   discovery: null as unknown as DiscoveryState,
   discoveryGraphs: [] as DiscoveryGraph[],
   discoveryTrayProps: null as DiscoveryTrayProps | null,
@@ -36,8 +33,8 @@ const mocks = vi.hoisted(() => ({
   player: null as unknown as ReturnType<
     typeof import("@/components/PlayerProvider").usePlayer
   >,
-  selectedNodeActionsProps: null as SelectedNodeActionsProps | null,
   sigmaContainer: null as HTMLDivElement | null,
+  songInspectorProps: null as SongInspectorProps | null,
   songGraph: {
     clusters: [],
     error: null as string | null,
@@ -60,17 +57,7 @@ vi.mock("@react-sigma/core", () => {
       mocks.events = events;
     },
     useSigma: () => ({
-      getCamera: () => ({
-        animate: mocks.cameraAnimate,
-        getState: () => mocks.cameraState,
-        isAnimated: () => mocks.cameraIsAnimated,
-      }),
       getContainer: () => mocks.sigmaContainer,
-      getNodeDisplayData: (node: string) => ({
-        size: 12,
-        x: node === "liked-b" ? 0.75 : 0.25,
-        y: node === "liked-b" ? 0.6 : 0.4,
-      }),
     }),
   };
 });
@@ -121,15 +108,11 @@ vi.mock("@/components/network/NeighborhoodHighlight", () => ({
   default: () => null,
 }));
 
-vi.mock("@/components/network/SelectedNodeActions", () => ({
-  default: (props: SelectedNodeActionsProps) => {
-    mocks.selectedNodeActionsProps = props;
+vi.mock("@/components/network/SongInspector", () => ({
+  default: (props: SongInspectorProps) => {
+    mocks.songInspectorProps = props;
     return null;
   },
-}));
-
-vi.mock("@/components/network/SongInspector", () => ({
-  default: () => null,
 }));
 
 const likedTrackA = makeTrack(
@@ -278,9 +261,6 @@ describe("Music Map discovery selection", () => {
 
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    mocks.cameraAnimate.mockReset();
-    mocks.cameraIsAnimated = false;
-    mocks.cameraState = { angle: 0, ratio: 1, x: 0.5, y: 0.5 };
     mocks.discovery = createDiscoveryState();
     mocks.discoveryGraphs = [];
     mocks.discoveryTrayProps = null;
@@ -292,8 +272,8 @@ describe("Music Map discovery selection", () => {
       queueTrack: vi.fn(async () => undefined),
       togglePlay: vi.fn(),
     } as unknown as typeof mocks.player;
-    mocks.selectedNodeActionsProps = null;
     mocks.sigmaContainer = document.createElement("div");
+    mocks.songInspectorProps = null;
     mocks.songGraph = {
       clusters: [],
       error: null,
@@ -342,15 +322,6 @@ describe("Music Map discovery selection", () => {
     expect(mocks.discovery.discover).toHaveBeenNthCalledWith(2, {
       selectedTrackId: likedTrackB.id,
     });
-    expect(mocks.cameraAnimate).toHaveBeenLastCalledWith(
-      { x: 0.75, y: 0.6 },
-      { duration: 350 },
-    );
-    expect(mocks.cameraAnimate).toHaveBeenCalledOnce();
-
-    mocks.discovery.candidates = [candidate];
-    await renderMap();
-    expect(mocks.cameraAnimate).toHaveBeenCalledOnce();
   });
 
   it("waits for the similarity graph before discovering the selected song", async () => {
@@ -376,31 +347,6 @@ describe("Music Map discovery selection", () => {
       selectedTrackId: likedTrackA.id,
     });
     expect(mocks.discoveryGraphs.at(-1)).toBe(mocks.songGraph.graph);
-  });
-
-  it("cancels a pending keyboard focus animation on pointer selection", async () => {
-    await renderMap();
-    const picker = container.querySelector<HTMLSelectElement>(
-      'select[aria-label="Choose a song on the map"]',
-    );
-    await act(async () => {
-      if (!picker) return;
-      picker.value = likedTrackB.id;
-      picker.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(mocks.cameraAnimate).toHaveBeenCalledWith(
-      { x: 0.75, y: 0.6 },
-      { duration: 350 },
-    );
-
-    mocks.cameraIsAnimated = true;
-    mocks.cameraState = { angle: 0, ratio: 1, x: 0.63, y: 0.55 };
-    await clickMapNode(likedTrackA.id);
-    expect(mocks.cameraAnimate).toHaveBeenLastCalledWith(
-      mocks.cameraState,
-      { duration: 1 },
-    );
-    expect(mocks.selectedNodeActionsProps?.track).toBe(likedTrackA);
   });
 
   it("waits for local discovery history to restore", async () => {
@@ -548,29 +494,29 @@ describe("Music Map discovery selection", () => {
     ).toBe(candidateTrack.id);
   });
 
-  it("wires the selected-node icons to playback and the Spotify queue", async () => {
+  it("wires the inspector actions to playback and the Spotify queue", async () => {
     const onPlaySong = vi.fn(async () => true);
     await renderMap({ onPlaySong });
     await clickMapNode(likedTrackA.id);
 
-    expect(mocks.selectedNodeActionsProps?.track).toBe(likedTrackA);
+    expect(mocks.songInspectorProps?.activeTrack).toBe(likedTrackA);
     await act(async () => {
-      await mocks.selectedNodeActionsProps?.onPlay(likedTrackA);
-      await mocks.selectedNodeActionsProps?.onQueue(likedTrackA);
+      await mocks.songInspectorProps?.onPlaySong?.(likedTrackA);
+      await mocks.songInspectorProps?.onQueueSong?.(likedTrackA);
     });
 
     expect(onPlaySong).toHaveBeenCalledWith(likedTrackA);
     expect(mocks.player.queueTrack).toHaveBeenCalledWith(likedTrackA.uri);
   });
 
-  it("disables candidate playback while discovery is busy", async () => {
+  it("marks candidate inspector playback busy during discovery", async () => {
     mocks.discovery.candidates = [candidate];
     mocks.discovery.isLoading = true;
     await renderMap();
     await clickMapNode(candidateTrack.id);
 
-    expect(mocks.selectedNodeActionsProps?.track).toBe(candidateTrack);
-    expect(mocks.selectedNodeActionsProps?.playDisabled).toBe(true);
+    expect(mocks.songInspectorProps?.activeTrack).toBe(candidateTrack);
+    expect(mocks.songInspectorProps?.isDiscovering).toBe(true);
     expect(mocks.player.playTrack).not.toHaveBeenCalled();
     expect(mocks.discovery.previewCandidate).not.toHaveBeenCalled();
   });
@@ -580,10 +526,10 @@ describe("Music Map discovery selection", () => {
     await renderMap();
     await clickMapNode(candidateTrack.id);
 
-    expect(mocks.selectedNodeActionsProps?.track).toBe(candidateTrack);
-    expect(mocks.selectedNodeActionsProps?.playDisabled).toBe(false);
+    expect(mocks.songInspectorProps?.activeTrack).toBe(candidateTrack);
+    expect(mocks.songInspectorProps?.isDiscovering).toBe(false);
     await act(async () => {
-      await mocks.selectedNodeActionsProps?.onPlay(candidateTrack);
+      await mocks.songInspectorProps?.onPlaySong?.(candidateTrack);
     });
 
     expect(mocks.player.playTrack).toHaveBeenCalledWith(candidateTrack.uri, [
@@ -602,7 +548,8 @@ describe("Music Map discovery selection", () => {
 
     let playbackRequest: Promise<void> | undefined;
     await act(async () => {
-      playbackRequest = mocks.selectedNodeActionsProps?.onPlay(candidateTrack);
+      const request = mocks.songInspectorProps?.onPlaySong?.(candidateTrack);
+      playbackRequest = request ? Promise.resolve(request).then(() => undefined) : undefined;
     });
     await clickMapNode(likedTrackA.id);
     expect(mocks.discovery.discover).not.toHaveBeenCalled();

@@ -18,6 +18,7 @@ interface SongInspectorProps {
   onClear: () => void;
   onDismissCandidate?: (trackId: string) => void;
   onPlaySong?: (track: EnrichedTrack) => boolean | Promise<boolean>;
+  onQueueSong?: (track: EnrichedTrack) => void | Promise<void>;
   onSaveCandidate?: (candidate: DiscoveryCandidate) => void;
 }
 
@@ -32,6 +33,7 @@ export default function SongInspector({
   onClear,
   onDismissCandidate,
   onPlaySong,
+  onQueueSong,
   onSaveCandidate,
 }: SongInspectorProps) {
   const imageUrl =
@@ -108,6 +110,17 @@ export default function SongInspector({
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               Play song
+            </button>
+          )}
+          {onQueueSong && (
+            <button
+              aria-label={`Add ${activeTrack.name} to the Spotify queue`}
+              className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-white/10"
+              onClick={() => onQueueSong(activeTrack)}
+              type="button"
+            >
+              <ListPlus className="h-3.5 w-3.5" />
+              Queue
             </button>
           )}
           {candidate && (

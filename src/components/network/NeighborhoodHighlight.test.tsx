@@ -68,14 +68,9 @@ describe("NeighborhoodHighlight", () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  it("keeps the selected border while hiding its canvas label", async () => {
+  it("keeps the selected border and restores its canvas label", async () => {
     await act(async () => {
-      root.render(
-        <NeighborhoodHighlight
-          focusNodeId="hovered"
-          selectedNodeId="selected"
-        />,
-      );
+      root.render(<NeighborhoodHighlight focusNodeId="selected" />);
     });
 
     const reducer = mocks.settings?.nodeReducer;
@@ -84,21 +79,11 @@ describe("NeighborhoodHighlight", () => {
       label: "Selected song",
       size: 10,
     });
-    const hovered = reducer?.("hovered", {
-      label: "Hovered song",
-      size: 10,
-    });
 
     expect(selected).toMatchObject({
-      forceLabel: false,
-      highlighted: true,
-      label: "",
-      size: 14.5,
-    });
-    expect(hovered).toMatchObject({
       forceLabel: true,
       highlighted: true,
-      label: "Hovered song",
+      label: "Selected song",
       size: 14.5,
     });
   });
