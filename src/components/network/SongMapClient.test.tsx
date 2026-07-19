@@ -14,6 +14,9 @@ type DiscoveryGraph = Parameters<typeof UseMapDiscovery>[0];
 type DiscoveryTrayProps = ComponentProps<
   typeof import("@/components/network/DiscoveryTray").default
 >;
+type SelectedNodeActionsProps = ComponentProps<
+  typeof import("@/components/network/SelectedNodeActions").default
+>;
 
 interface RegisteredMapEvents {
   clickNode: (event: { node: string }) => void;
@@ -30,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   player: null as unknown as ReturnType<
     typeof import("@/components/PlayerProvider").usePlayer
   >,
+  selectedNodeActionsProps: null as SelectedNodeActionsProps | null,
   sigmaContainer: null as HTMLDivElement | null,
   songGraph: {
     clusters: [],
@@ -102,6 +106,13 @@ vi.mock("@/components/network/GraphLoader", () => ({
 
 vi.mock("@/components/network/NeighborhoodHighlight", () => ({
   default: () => null,
+}));
+
+vi.mock("@/components/network/SelectedNodeActions", () => ({
+  default: (props: SelectedNodeActionsProps) => {
+    mocks.selectedNodeActionsProps = props;
+    return null;
+  },
 }));
 
 vi.mock("@/components/network/SongInspector", () => ({
@@ -206,12 +217,15 @@ describe("Music Map discovery selection", () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  const renderMap = async () => {
+  const renderMap = async (
+    props: Partial<ComponentProps<typeof SongMapClient>> = {},
+  ) => {
     await act(async () => {
       root.render(
         <SongMapClient
           libraryProgress={100}
           songs={[likedTrackA, likedTrackB, likedTrackC]}
+          {...props}
         />,
       );
     });
@@ -233,8 +247,10 @@ describe("Music Map discovery selection", () => {
       currentTrack: null,
       isPaused: true,
       playTrack: vi.fn(async () => undefined),
+      queueTrack: vi.fn(async () => undefined),
       togglePlay: vi.fn(),
     } as unknown as typeof mocks.player;
+    mocks.selectedNodeActionsProps = null;
     mocks.sigmaContainer = document.createElement("div");
     mocks.songGraph = {
       clusters: [],
@@ -454,5 +470,20 @@ describe("Music Map discovery selection", () => {
         'select[aria-label="Choose a song on the map"]',
       )?.value,
     ).toBe(candidateTrack.id);
+  });
+
+  it("wires the selected-node icons to playback and the Spotify queue", async () => {
+    const onPlaySong = vi.fn(async () => true);
+    await renderMap({ onPlaySong });
+    await clickMapNode(likedTrackA.id);
+
+    expect(mocks.selectedNodeActionsProps?.track).toBe(likedTrackA);
+    await act(async () => {
+      await mocks.selectedNodeActionsProps?.onPlay(likedTrackA);
+      await mocks.selectedNodeActionsProps?.onQueue(likedTrackA);
+    });
+
+    expect(onPlaySong).toHaveBeenCalledWith(likedTrackA);
+    expect(mocks.player.queueTrack).toHaveBeenCalledWith(likedTrackA.uri);
   });
 });

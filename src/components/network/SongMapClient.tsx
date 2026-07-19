@@ -21,6 +21,7 @@ import DiscoveryControls from "@/components/network/DiscoveryControls";
 import DiscoveryTray from "@/components/network/DiscoveryTray";
 import GraphLoader from "@/components/network/GraphLoader";
 import NeighborhoodHighlight from "@/components/network/NeighborhoodHighlight";
+import SelectedNodeActions from "@/components/network/SelectedNodeActions";
 import SongInspector from "@/components/network/SongInspector";
 import { useMapDiscovery } from "@/hooks/useMapDiscovery";
 import { useSongGraph } from "@/hooks/useSongGraph";
@@ -115,7 +116,8 @@ export default function SongMapClient({
   const [selectedCluster, setSelectedCluster] = useState<ClusterProfile | null>(
     null,
   );
-  const { currentTrack, isPaused, playTrack, togglePlay } = usePlayer();
+  const { currentTrack, isPaused, playTrack, queueTrack, togglePlay } =
+    usePlayer();
   const previewGraph = useMemo(() => buildPreviewGraph(songs), [songs]);
   const {
     clusters,
@@ -343,7 +345,27 @@ export default function SongMapClient({
           onSelect={selectMapTrack}
           tracksById={tracksById}
         />
-        <NeighborhoodHighlight focusNodeId={focusNodeId} />
+        <NeighborhoodHighlight
+          focusNodeId={focusNodeId}
+          selectedNodeId={validSelectedTrack?.id}
+        />
+        {validSelectedTrack && (
+          <SelectedNodeActions
+            key={validSelectedTrack.id}
+            onPlay={async (track) => {
+              if (onPlaySong) {
+                const started = await onPlaySong(track);
+                if (!started) throw new Error("Spotify playback did not start");
+                return;
+              }
+              await playTrack(track.uri);
+            }}
+            onQueue={async (track) => {
+              await queueTrack(track.uri);
+            }}
+            track={validSelectedTrack}
+          />
+        )}
         <ClusterFocus cluster={selectedCluster} />
         <ControlsContainer position="bottom-right">
           <ZoomControl />
@@ -447,7 +469,6 @@ export default function SongMapClient({
               : undefined
           }
           cluster={activeCluster}
-          graph={graph}
           isSelected={Boolean(
             validSelectedTrack && activeTrack.id === validSelectedTrack.id,
           )}
@@ -468,7 +489,6 @@ export default function SongMapClient({
               : undefined
           }
           onSaveCandidate={discovery.saveCandidate}
-          tracksById={tracksById}
         />
       )}
 
