@@ -19,10 +19,13 @@ describe("SongInspector", () => {
         isSelected
         onClear={vi.fn()}
         onPlaySong={vi.fn()}
+        onQueueSong={vi.fn()}
       />,
     );
 
     expect(html).toContain("Play song");
+    expect(html).toContain("Queue");
+    expect(html).toContain(`aria-label="Add ${track.name} to the Spotify queue"`);
     expect(html).toContain(`alt="${track.album.name} cover"`);
     expect(html).not.toContain("Strongest nearby songs");
     expect(html).not.toContain("Discover 10 new songs");

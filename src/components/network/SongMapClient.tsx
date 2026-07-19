@@ -21,7 +21,6 @@ import DiscoveryControls from "@/components/network/DiscoveryControls";
 import DiscoveryTray from "@/components/network/DiscoveryTray";
 import GraphLoader from "@/components/network/GraphLoader";
 import NeighborhoodHighlight from "@/components/network/NeighborhoodHighlight";
-import SelectedNodeActions from "@/components/network/SelectedNodeActions";
 import SongInspector from "@/components/network/SongInspector";
 import { useMapDiscovery } from "@/hooks/useMapDiscovery";
 import { useSongGraph } from "@/hooks/useSongGraph";
@@ -76,47 +75,6 @@ interface MapEventsProps {
   tracksById: Map<string, EnrichedTrack>;
 }
 
-interface CameraFocusRequest {
-  id: number;
-  nodeId: string;
-}
-
-function SelectedNodeFocus({
-  cancellationSequence,
-  onConsumed,
-  request,
-}: {
-  cancellationSequence: number;
-  onConsumed: (requestId: number) => void;
-  request: CameraFocusRequest | null;
-}) {
-  const sigma = useSigma();
-  const handledCancellationSequence = useRef(cancellationSequence);
-  const consumedRequestId = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (handledCancellationSequence.current === cancellationSequence) return;
-    handledCancellationSequence.current = cancellationSequence;
-    const camera = sigma.getCamera();
-    if (!camera.isAnimated()) return;
-    void camera.animate(camera.getState(), { duration: 1 });
-  }, [cancellationSequence, sigma]);
-
-  useEffect(() => {
-    if (!request || consumedRequestId.current === request.id) return;
-    const displayData = sigma.getNodeDisplayData(request.nodeId);
-    if (!displayData) return;
-    consumedRequestId.current = request.id;
-    sigma.getCamera().animate(
-      { x: displayData.x, y: displayData.y },
-      { duration: 350 },
-    );
-    onConsumed(request.id);
-  }, [onConsumed, request, sigma]);
-
-  return null;
-}
-
 function MapEvents({ onHover, onSelect, tracksById }: MapEventsProps) {
   const registerEvents = useRegisterEvents();
   const sigma = useSigma();
@@ -153,11 +111,6 @@ export default function SongMapClient({
   const [hoveredTrack, setHoveredTrack] = useState<EnrichedTrack | null>(null);
   const pendingDiscoveryTrackId = useRef<string | null>(null);
   const runningDiscoveryTrackId = useRef<string | null>(null);
-  const cameraFocusSequence = useRef(0);
-  const [cameraCancellationSequence, setCameraCancellationSequence] =
-    useState(0);
-  const [cameraFocusRequest, setCameraFocusRequest] =
-    useState<CameraFocusRequest | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<EnrichedTrack | null>(null);
   const candidatePlaybackRequests = useRef(0);
   const [isCandidatePlaybackPending, setIsCandidatePlaybackPending] =
@@ -275,25 +228,8 @@ export default function SongMapClient({
       ),
     [mappedCandidateTracks, songs],
   );
-  const requestCameraFocus = useCallback((nodeId: string) => {
-    cameraFocusSequence.current += 1;
-    setCameraFocusRequest({ id: cameraFocusSequence.current, nodeId });
-  }, []);
-  const consumeCameraFocus = useCallback((requestId: number) => {
-    setCameraFocusRequest((current) =>
-      current?.id === requestId ? null : current,
-    );
-  }, []);
-  const cancelCameraFocus = useCallback(() => {
-    setCameraCancellationSequence((current) => current + 1);
-  }, []);
   const selectMapTrack = useCallback(
-    (track: EnrichedTrack | null, focusCamera = false) => {
-      if (focusCamera && track) requestCameraFocus(track.id);
-      else {
-        setCameraFocusRequest(null);
-        cancelCameraFocus();
-      }
+    (track: EnrichedTrack | null) => {
       setSelectedTrack(track);
       pendingDiscoveryTrackId.current = null;
       if (!track) return;
@@ -315,11 +251,9 @@ export default function SongMapClient({
     },
     [
       candidateById,
-      cancelCameraFocus,
       discoveryGraph,
       hasRestored,
       isDiscoveryBusy,
-      requestCameraFocus,
       startDiscovery,
     ],
   );
@@ -421,40 +355,7 @@ export default function SongMapClient({
           onSelect={selectMapTrack}
           tracksById={tracksById}
         />
-        <NeighborhoodHighlight
-          focusNodeId={focusNodeId}
-          selectedNodeId={validSelectedTrack?.id}
-        />
-        <SelectedNodeFocus
-          cancellationSequence={cameraCancellationSequence}
-          onConsumed={consumeCameraFocus}
-          request={cameraFocusRequest}
-        />
-        {validSelectedTrack && (
-          <SelectedNodeActions
-            key={validSelectedTrack.id}
-            onPlay={async (track) => {
-              const candidate = candidateById.get(track.id);
-              if (candidate) {
-                const started = await playDiscoveryCandidate(candidate);
-                if (!started) throw new Error("Spotify playback did not start");
-                return;
-              }
-              if (onPlaySong) {
-                const started = await onPlaySong(track);
-                if (!started) throw new Error("Spotify playback did not start");
-                return;
-              }
-              await playTrack(track.uri);
-            }}
-            onQueue={async (track) => {
-              await queueTrack(track.uri);
-            }}
-            playDisabled={Boolean(selectedCandidate && isDiscoveryBusy)}
-            track={validSelectedTrack}
-            viewportTopInset={similarityGraph ? 96 : 146}
-          />
-        )}
+        <NeighborhoodHighlight focusNodeId={focusNodeId} />
         <ClusterFocus cluster={selectedCluster} />
         <ControlsContainer position="bottom-right">
           <ZoomControl />
@@ -505,7 +406,7 @@ export default function SongMapClient({
           value={validSelectedTrack?.id ?? ""}
           onChange={(event) => {
             const track = tracksById.get(event.target.value) ?? null;
-            selectMapTrack(track, true);
+            selectMapTrack(track);
           }}
         >
           <option value="">Choose a song…</option>
@@ -528,8 +429,6 @@ export default function SongMapClient({
             onChange={(event) => {
               setHoveredTrack(null);
               pendingDiscoveryTrackId.current = null;
-              setCameraFocusRequest(null);
-              cancelCameraFocus();
               setSelectedTrack(null);
               setSelectedCluster(
                 clusters.find((cluster) => cluster.id === event.target.value) ??
@@ -578,6 +477,9 @@ export default function SongMapClient({
                 }
               : undefined
           }
+          onQueueSong={async (track) => {
+            await queueTrack(track.uri);
+          }}
           onSaveCandidate={discovery.saveCandidate}
         />
       )}
@@ -640,7 +542,6 @@ export default function SongMapClient({
           discovery.selectCandidate(candidate);
           pendingDiscoveryTrackId.current = null;
           setSelectedCluster(null);
-          requestCameraFocus(candidate.track.id);
           setSelectedTrack(candidate.track);
         }}
         playlistStates={discovery.playlistStates}
