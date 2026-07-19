@@ -42,20 +42,12 @@ interface DiscoveryTrayProps {
   summary: string;
 }
 
-const statsLabel = (stats: RecommendationStrategyStats | undefined) => {
-  if (!stats || stats.likeRate === null) return "No ratings yet";
-  return stats.impressions > 0
-    ? `${Math.round(stats.likeRate * 100)}% liked · ${stats.total}/${stats.impressions} rated`
-    : `${Math.round(stats.likeRate * 100)}% liked (${stats.total} ratings)`;
-};
-
 export default function DiscoveryTray({
   candidates,
   currentTrackUri,
   error,
   feedbackError,
   feedbackStates,
-  feedbackStats,
   isPlaybackPaused,
   isLoading,
   onAddToPlaylist,
@@ -68,7 +60,6 @@ export default function DiscoveryTray({
   onTogglePlayback,
   playlistStates,
   saveStates,
-  summary,
 }: DiscoveryTrayProps) {
   if (!isLoading && !error && candidates.length === 0) return null;
 
@@ -77,22 +68,8 @@ export default function DiscoveryTray({
       aria-label="Nearby discoveries"
       className="absolute bottom-3 right-14 top-24 z-20 flex w-[min(22rem,calc(100%-4.5rem))] flex-col overflow-hidden rounded-xl border border-white/10 bg-black/90 shadow-2xl backdrop-blur-xl"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-white/10 p-3">
-        <div>
-          <p className="text-sm font-semibold text-white">Nearby discoveries</p>
-          {summary && (
-            <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-500">
-              {summary}
-            </p>
-          )}
-          {feedbackStats.length > 0 && (
-            <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">
-              Song seed: {statsLabel(feedbackStats.find((item) => item.strategy === "song"))}
-              <span aria-hidden="true"> · </span>
-              Neighborhood: {statsLabel(feedbackStats.find((item) => item.strategy === "neighborhood"))}
-            </p>
-          )}
-        </div>
+      <div className="flex items-start justify-between gap-3 p-3">
+        <p className="text-sm font-semibold text-white">Similar Songs</p>
         <button
           type="button"
           onClick={onClear}
