@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildClusterProfiles } from "@/lib/network/buildClusterProfiles";
 import { buildFeatures, normalizeLibrary } from "@/lib/network/buildFeatures";
-import { buildSongGraph as constructSongGraph } from "@/lib/network/buildGraph";
+import {
+  buildSongGraph as constructSongGraph,
+  type SongGraph,
+} from "@/lib/network/buildGraph";
 import { buildSongGraph } from "@/lib/network/buildSongGraph";
 import {
   calculateSimilarity,
@@ -18,6 +21,23 @@ import {
   networkBenchmarkCases,
   networkFixtureTracks,
 } from "@/lib/network/__tests__/fixtures";
+
+const expectNoNodeOverlaps = (graph: SongGraph) => {
+  const nodes = graph.nodes();
+  for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
+    const left = graph.getNodeAttributes(nodes[leftIndex]);
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < nodes.length;
+      rightIndex += 1
+    ) {
+      const right = graph.getNodeAttributes(nodes[rightIndex]);
+      expect(Math.hypot(left.x - right.x, left.y - right.y)).toBeGreaterThanOrEqual(
+        left.size + right.size - 0.01,
+      );
+    }
+  }
+};
 
 describe("song graph features and similarity", () => {
   it("normalizes, filters, and deduplicates tracks deterministically", () => {
@@ -158,6 +178,7 @@ describe("layout and graph cache", () => {
     expect(first.cacheHit).toBe(false);
     expect(second.cacheHit).toBe(true);
     expect(second.positions).toEqual(first.positions);
+    expectNoNodeOverlaps(firstGraph);
     Object.values(first.positions).forEach(({ x, y }) => {
       expect(Number.isFinite(x)).toBe(true);
       expect(Number.isFinite(y)).toBe(true);

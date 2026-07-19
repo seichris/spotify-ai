@@ -145,6 +145,70 @@ describe("candidate resolution, scoring, and placement", () => {
     expect(clusters.length).toBeGreaterThan(0);
   });
 
+  it("places discovered songs away from their anchors and each other", () => {
+    const { graph } = buildFixtureGraph();
+    const context = createDiscoveryContext({
+      graph,
+      scope: "song",
+      selectedTrackId: "dream-1",
+      tracks: networkFixtureTracks,
+    });
+    const mapped = scoreDiscoveryCandidates(
+      [
+        {
+          proposal,
+          recommendationId: "rec-collision-one",
+          resolutionConfidence: 1,
+          track: makeTrack(
+            "candidate-collision-one",
+            "Near Horizon",
+            "artist-new-one",
+            "New Dreamer",
+            ["dream pop", "shoegaze"],
+          ),
+        },
+      ],
+      networkFixtureTracks,
+      context,
+    )[0];
+    expect(mapped.mapped).toBe(true);
+    expect(mapped.anchors.length).toBeGreaterThan(0);
+    const anchor = mapped.anchors[0];
+    const candidates = [
+      { ...mapped, anchors: [anchor] },
+      {
+        ...mapped,
+        anchors: [anchor],
+        recommendationId: "rec-collision-two",
+        track: makeTrack(
+          "candidate-collision-two",
+          "Another Horizon",
+          "artist-new-two",
+          "Another Dreamer",
+          ["dream pop", "shoegaze"],
+        ),
+      },
+    ];
+    const candidateGraph = placeCandidates(graph, candidates);
+
+    candidates.forEach((candidate) => {
+      const candidateAttributes = candidateGraph.getNodeAttributes(
+        candidate.track.id,
+      );
+      candidateGraph.forEachNode((node, attributes) => {
+        if (node === candidate.track.id) return;
+        expect(
+          Math.hypot(
+            candidateAttributes.x - attributes.x,
+            candidateAttributes.y - attributes.y,
+          ),
+        ).toBeGreaterThanOrEqual(
+          candidateAttributes.size + attributes.size - 0.01,
+        );
+      });
+    });
+  });
+
   it("keeps a candidate score stable when unrelated suggestions join the batch", () => {
     const { graph } = buildFixtureGraph();
     const context = createDiscoveryContext({
