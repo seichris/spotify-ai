@@ -1,5 +1,10 @@
 import forceAtlas2 from "graphology-layout-forceatlas2";
-import { GRAPH_LAYOUT_CONFIG } from "@/lib/network/graphConfig";
+import noverlap from "graphology-layout-noverlap";
+import { separateNodeCollisions } from "@/lib/network/collisionPlacement";
+import {
+  GRAPH_LAYOUT_CONFIG,
+  GRAPH_NOVERLAP_CONFIG,
+} from "@/lib/network/graphConfig";
 import { hashUnit } from "@/lib/network/hash";
 import type { SongGraph } from "@/lib/network/buildGraph";
 
@@ -116,5 +121,9 @@ export const layoutSongGraph = (
 
   ensureFinitePositions(graph);
   placeIsolates(graph);
+  if (graph.order > 1) {
+    noverlap.assign(graph, GRAPH_NOVERLAP_CONFIG);
+    separateNodeCollisions(graph);
+  }
   return { cacheHit: false, positions: readPositions(graph) };
 };

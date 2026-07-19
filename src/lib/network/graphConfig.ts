@@ -1,6 +1,6 @@
 export const GRAPH_CACHE_SCHEMA_VERSION = 2;
 export const GRAPH_MODEL_VERSION = "metadata-audio-v2";
-export const GRAPH_LAYOUT_VERSION = "forceatlas2-v2";
+export const GRAPH_LAYOUT_VERSION = "forceatlas2-noverlap-v3";
 
 export const GRAPH_SIMILARITY_WEIGHTS = {
   genre: 0.58,
@@ -26,7 +26,7 @@ export const GRAPH_LAYOUT_CONFIG = {
   iterations: 350,
   cachedIterations: 0,
   settings: {
-    adjustSizes: false,
+    adjustSizes: true,
     barnesHutOptimize: true,
     barnesHutTheta: 0.5,
     edgeWeightInfluence: 1,
@@ -36,6 +36,17 @@ export const GRAPH_LAYOUT_CONFIG = {
     scalingRatio: 10,
     slowDown: 2,
     strongGravityMode: false,
+  },
+} as const;
+
+export const GRAPH_NOVERLAP_CONFIG = {
+  maxIterations: 250,
+  settings: {
+    expansion: 1.1,
+    gridSize: 20,
+    margin: 0.75,
+    ratio: 1.1,
+    speed: 3,
   },
 } as const;
 

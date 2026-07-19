@@ -1,4 +1,8 @@
 import type { SongGraph } from "@/lib/network/buildGraph";
+import {
+  findAvailablePosition,
+  OccupiedPositionIndex,
+} from "@/lib/network/collisionPlacement";
 import { hashUnit } from "@/lib/network/hash";
 import type { DiscoveryCandidate } from "@/types/network";
 
@@ -9,6 +13,14 @@ export const placeCandidates = (
   if (candidates.every((candidate) => !candidate.mapped)) return baseGraph;
 
   const graph = baseGraph.copy();
+  const occupied = new OccupiedPositionIndex(
+    graph.mapNodes((_node, attributes) => ({
+      size: attributes.size,
+      x: attributes.x,
+      y: attributes.y,
+    })),
+    8,
+  );
   candidates
     .filter((candidate) => candidate.mapped && candidate.anchors.length > 0)
     .forEach((candidate, candidateIndex) => {
@@ -37,6 +49,14 @@ export const placeCandidates = (
       const strongestAnchor = usableAnchors[0];
       const anchorAttributes = graph.getNodeAttributes(strongestAnchor.trackId);
       const isSaved = candidate.status === "saved";
+      const size = isSaved ? 6 : 8;
+      const position = findAvailablePosition(
+        occupied,
+        center,
+        angle,
+        offset,
+        size,
+      );
 
       graph.addNode(candidate.track.id, {
         albumId: candidate.track.album.id,
@@ -54,12 +74,13 @@ export const placeCandidates = (
         kind: isSaved ? "liked" : "candidate",
         label: candidate.track.name,
         recommendationId: candidate.recommendationId,
-        size: isSaved ? 6 : 8,
+        size,
         type: "image",
         uri: candidate.track.uri,
-        x: center.x + Math.cos(angle) * offset,
-        y: center.y + Math.sin(angle) * offset,
+        x: position.x,
+        y: position.y,
       });
+      occupied.add(position);
 
       usableAnchors.forEach((anchor) => {
         graph.addEdgeWithKey(
