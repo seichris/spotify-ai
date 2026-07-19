@@ -9,6 +9,7 @@ import {
   ThumbsUp,
   X,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type {
   CandidateSaveState,
   DiscoveryCandidate,
@@ -70,7 +71,50 @@ export default function DiscoveryTray({
   saveStates,
   summary,
 }: DiscoveryTrayProps) {
+  const [collapsedCandidateSetKey, setCollapsedCandidateSetKey] = useState<
+    string | null
+  >(null);
+  const collapsedButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mapButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const restoreMapButtonId = useRef<string | null>(null);
+  const shouldRestoreMapFocus = useRef(false);
+  const candidateSetKey = candidates
+    .map((candidate) => candidate.recommendationId)
+    .join("|");
+  const isCollapsed = collapsedCandidateSetKey === candidateSetKey;
+
+  useEffect(() => {
+    if (isCollapsed) {
+      collapsedButtonRef.current?.focus();
+      return;
+    }
+    if (!shouldRestoreMapFocus.current) return;
+    shouldRestoreMapFocus.current = false;
+    const recommendationId = restoreMapButtonId.current;
+    if (!recommendationId) return;
+    restoreMapButtonId.current = null;
+    mapButtonRefs.current.get(recommendationId)?.focus();
+  }, [isCollapsed]);
+
   if (!isLoading && !error && candidates.length === 0) return null;
+
+  if (isCollapsed) {
+    return (
+      <button
+        aria-label="Show nearby discoveries"
+        className="absolute right-14 top-24 z-20 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/90 px-3 py-2 text-xs font-medium text-zinc-200 shadow-xl backdrop-blur-xl hover:bg-zinc-900"
+        onClick={() => {
+          shouldRestoreMapFocus.current = true;
+          setCollapsedCandidateSetKey(null);
+        }}
+        ref={collapsedButtonRef}
+        type="button"
+      >
+        <MapPin className="h-3.5 w-3.5" />
+        Nearby discoveries
+      </button>
+    );
+  }
 
   return (
     <aside
@@ -230,7 +274,21 @@ export default function DiscoveryTray({
                 {candidate.mapped && (
                   <button
                     type="button"
-                    onClick={() => onSelect(candidate)}
+                    onClick={() => {
+                      restoreMapButtonId.current = candidate.recommendationId;
+                      setCollapsedCandidateSetKey(candidateSetKey);
+                      onSelect(candidate);
+                    }}
+                    ref={(button) => {
+                      if (button) {
+                        mapButtonRefs.current.set(
+                          candidate.recommendationId,
+                          button,
+                        );
+                      } else {
+                        mapButtonRefs.current.delete(candidate.recommendationId);
+                      }
+                    }}
                     disabled={isLoading}
                     className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1 text-[10px] text-zinc-300 hover:bg-white/10 disabled:opacity-50"
                   >

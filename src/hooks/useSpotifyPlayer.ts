@@ -60,6 +60,29 @@ declare global {
     }
 }
 
+export const addTrackToSpotifyQueue = async ({
+    token,
+    uri,
+}: {
+    token: string;
+    uri: string;
+}) => {
+    const query = new URLSearchParams({ uri });
+
+    const response = await fetch(
+        `https://api.spotify.com/v1/me/player/queue?${query.toString()}`,
+        {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        },
+    );
+    if (!response.ok) {
+        throw new Error(`Spotify queue update failed (${response.status})`);
+    }
+};
+
 export function useSpotifyPlayer(token: string) {
     const playerRef = useRef<SpotifyWebPlaybackPlayer | null>(null);
     const [player, setPlayer] = useState<SpotifyWebPlaybackPlayer | null>(null);
@@ -144,6 +167,13 @@ export function useSpotifyPlayer(token: string) {
         }
     }, [deviceId, token]);
 
+    const queueTrack = useCallback(
+        async (uri: string) => {
+            await addTrackToSpotifyQueue({ token, uri });
+        },
+        [token],
+    );
+
     const togglePlay = useCallback(() => {
         if (!player) return;
         player.togglePlay();
@@ -159,5 +189,16 @@ export function useSpotifyPlayer(token: string) {
         player.previousTrack();
     }, [player]);
 
-    return { player, isPaused, isActive, currentTrack, playTrack, deviceId, togglePlay, nextTrack, previousTrack };
+    return {
+        player,
+        isPaused,
+        isActive,
+        currentTrack,
+        playTrack,
+        queueTrack,
+        deviceId,
+        togglePlay,
+        nextTrack,
+        previousTrack,
+    };
 }

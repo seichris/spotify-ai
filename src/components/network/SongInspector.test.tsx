@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import SongInspector from "@/components/network/SongInspector";
-import { buildPreviewGraph } from "@/lib/network/buildPreviewGraph";
 import { makeTrack } from "@/lib/network/__tests__/fixtures";
 
 describe("SongInspector", () => {
@@ -13,19 +12,19 @@ describe("SongInspector", () => {
       "Artist",
       ["dream pop"],
     );
-    const graph = buildPreviewGraph([track]);
+    track.album.images = [{ url: "https://i.scdn.co/image/test-cover" }];
     const html = renderToStaticMarkup(
       <SongInspector
         activeTrack={track}
-        graph={graph}
         isSelected
         onClear={vi.fn()}
         onPlaySong={vi.fn()}
-        tracksById={new Map([[track.id, track]])}
       />,
     );
 
     expect(html).toContain("Play song");
+    expect(html).toContain(`alt="${track.album.name} cover"`);
+    expect(html).not.toContain("Strongest nearby songs");
     expect(html).not.toContain("Discover 10 new songs");
   });
 });

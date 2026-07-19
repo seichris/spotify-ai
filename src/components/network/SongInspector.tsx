@@ -1,13 +1,10 @@
 import { HeartPlus, ListPlus, Play, X } from "lucide-react";
-import type Graph from "graphology";
-import SimilarityExplanation from "@/components/network/SimilarityExplanation";
+import Image from "next/image";
 import type { EnrichedTrack } from "@/hooks/useSpotifyLibrary";
 import type {
   ClusterProfile,
   CandidateSaveState,
   DiscoveryCandidate,
-  SongGraphEdgeAttributes,
-  SongGraphNodeAttributes,
 } from "@/types/network";
 
 interface SongInspectorProps {
@@ -15,7 +12,6 @@ interface SongInspectorProps {
   candidate?: DiscoveryCandidate;
   candidateSaveState?: CandidateSaveState;
   cluster?: ClusterProfile;
-  graph: Graph<SongGraphNodeAttributes, SongGraphEdgeAttributes>;
   isSelected: boolean;
   isDiscovering?: boolean;
   onAddCandidateToPlaylist?: (candidate: DiscoveryCandidate) => void;
@@ -23,7 +19,6 @@ interface SongInspectorProps {
   onDismissCandidate?: (trackId: string) => void;
   onPlaySong?: (track: EnrichedTrack) => boolean | Promise<boolean>;
   onSaveCandidate?: (candidate: DiscoveryCandidate) => void;
-  tracksById: Map<string, EnrichedTrack>;
 }
 
 export default function SongInspector({
@@ -31,7 +26,6 @@ export default function SongInspector({
   candidate,
   candidateSaveState,
   cluster,
-  graph,
   isSelected,
   isDiscovering,
   onAddCandidateToPlaylist,
@@ -39,36 +33,51 @@ export default function SongInspector({
   onDismissCandidate,
   onPlaySong,
   onSaveCandidate,
-  tracksById,
 }: SongInspectorProps) {
+  const imageUrl =
+    activeTrack.album.images[1]?.url ??
+    activeTrack.album.images[0]?.url ??
+    activeTrack.album.images[2]?.url;
+
   return (
     <div className="absolute bottom-3 left-3 right-16 z-10 max-h-[55%] max-w-md overflow-y-auto rounded-xl border border-white/10 bg-black/85 p-3 shadow-xl backdrop-blur-md">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">
-            {activeTrack.name}
-          </p>
-          <p className="truncate text-xs text-zinc-400">
-            {activeTrack.artists.map((artist) => artist.name).join(", ")}
-          </p>
-          {cluster && (
-            <p
-              className="mt-1 text-[11px] font-medium"
-              style={{ color: cluster.color }}
-            >
-              {cluster.label}
-            </p>
+        <div className="flex min-w-0 items-start gap-3">
+          {imageUrl && (
+            <Image
+              alt={`${activeTrack.album.name} cover`}
+              className="h-16 w-16 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
+              height={64}
+              src={imageUrl}
+              width={64}
+            />
           )}
-          {candidate && (
-            <p className="mt-1 text-[11px] font-medium text-yellow-400">
-              New candidate · {candidate.confidence} confidence
+          <div className="min-w-0 pt-0.5">
+            <p className="truncate text-sm font-semibold text-white">
+              {activeTrack.name}
             </p>
-          )}
-          {activeTrack.genres.length > 0 && (
-            <p className="mt-1 truncate text-[11px] text-zinc-500">
-              {activeTrack.genres.slice(0, 3).join(" · ")}
+            <p className="truncate text-xs text-zinc-400">
+              {activeTrack.artists.map((artist) => artist.name).join(", ")}
             </p>
-          )}
+            {cluster && (
+              <p
+                className="mt-1 text-[11px] font-medium"
+                style={{ color: cluster.color }}
+              >
+                {cluster.label}
+              </p>
+            )}
+            {candidate && (
+              <p className="mt-1 text-[11px] font-medium text-yellow-400">
+                New candidate · {candidate.confidence} confidence
+              </p>
+            )}
+            {activeTrack.genres.length > 0 && (
+              <p className="mt-1 truncate text-[11px] text-zinc-500">
+                {activeTrack.genres.slice(0, 3).join(" · ")}
+              </p>
+            )}
+          </div>
         </div>
         {isSelected && (
           <button
@@ -81,14 +90,6 @@ export default function SongInspector({
           </button>
         )}
       </div>
-
-      {isSelected && (
-        <SimilarityExplanation
-          graph={graph}
-          track={activeTrack}
-          tracksById={tracksById}
-        />
-      )}
 
       {candidate && (
         <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
